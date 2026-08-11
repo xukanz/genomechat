@@ -1,0 +1,1 @@
+export { DatabaseDetailModal } from './DatabaseDetailModal'

@@ -1,0 +1,223 @@
+schema:
+  # DuckDB over Parquet. Column names come straight from the GWAS Catalog TSV
+  # headers, so most contain spaces or punctuation and MUST be double-quoted in
+  # SQL. Every column is VARCHAR: the source mixes free text and sentinels such
+  # as "NR" into numeric fields, so typing is deferred to query time via
+  # TRY_CAST.
+  dialect_notes: >
+    PostgreSQL syntax (DuckDB). Quote every column name with double quotes.
+    Cast numerics with TRY_CAST, which yields NULL instead of raising on the
+    text rows.
+  tables:
+    associations:
+      description: >
+        One row per reported SNP-trait association from a published
+        genome-wide association study. Approximately 1.19 million rows, 38
+        columns. Joinable to `studies` on "PUBMEDID" only — "STUDY ACCESSION"
+        exists on this table but not on studies. Most study-level fields are
+        already denormalised here, so the join is rarely needed.
+      columns:
+        - name: '"STUDY ACCESSION"'
+          type: varchar
+          description: >
+            GCST study accession. Present only on this table; studies does NOT
+            carry it, so it cannot be used as a join key.
+        - name: '"PUBMEDID"'
+          type: varchar
+          description: >
+            PubMed identifier of the source publication. The join key to
+            studies, and the natural handoff to the literature-search tools.
+            One PubMed ID can map to several studies, so the join is
+            many-to-many.
+        - name: '"FIRST AUTHOR"'
+          type: varchar
+          description: First author surname and initials.
+        - name: '"DATE"'
+          type: varchar
+          description: Publication date as YYYY-MM-DD text.
+        - name: '"DATE ADDED TO CATALOG"'
+          type: varchar
+          description: Curation date, which is later than the publication date.
+        - name: '"JOURNAL"'
+          type: varchar
+          description: Journal name.
+        - name: '"LINK"'
+          type: varchar
+          description: PubMed URL for the study.
+        - name: '"STUDY"'
+          type: varchar
+          description: Publication title.
+        - name: '"DISEASE/TRAIT"'
+          type: varchar
+          description: >
+            Trait as worded by the authors. Free text and highly variable, so
+            prefer MAPPED_TRAIT for grouping.
+        - name: '"MAPPED_TRAIT"'
+          type: varchar
+          description: >
+            Curated Experimental Factor Ontology term. The reliable column for
+            grouping traits. May be empty.
+        - name: '"MAPPED_TRAIT_URI"'
+          type: varchar
+          description: EFO URI; comma-separated when several apply.
+        - name: '"SNPS"'
+          type: varchar
+          description: >
+            Variant identifier, usually an rsID. May hold several delimited by
+            ";" or by "x" for interaction terms, and may be a chr:pos string
+            when no rsID exists.
+        - name: '"STRONGEST SNP-RISK ALLELE"'
+          type: varchar
+          description: Format "rs1234-A"; the suffix is "-?" when unknown.
+        - name: '"CHR_ID"'
+          type: varchar
+          description: Chromosome. Empty for unmapped variants.
+        - name: '"CHR_POS"'
+          type: varchar
+          description: Base position on the chromosome. Empty for unmapped variants.
+        - name: '"REGION"'
+          type: varchar
+          description: Cytogenetic band, e.g. "2q24.3".
+        - name: '"CONTEXT"'
+          type: varchar
+          description: >
+            Functional consequence class, e.g. intron_variant,
+            missense_variant, intergenic_variant.
+        - name: '"INTERGENIC"'
+          type: varchar
+          description: Set to 1 when the variant lies outside any gene.
+        - name: '"MAPPED_GENE"'
+          type: varchar
+          description: >
+            Ensembl-mapped gene symbol(s). "A - B" denotes an intergenic
+            variant flanked by two genes; "A, B, C" denotes several
+            overlapping genes. Split on ", " inside a subquery before
+            aggregating.
+        - name: '"REPORTED GENE(S)"'
+          type: varchar
+          description: >
+            Gene(s) named by the authors. Frequently disagrees with
+            MAPPED_GENE.
+        - name: '"SNP_GENE_IDS"'
+          type: varchar
+          description: Ensembl gene IDs the variant falls within.
+        - name: '"UPSTREAM_GENE_ID"'
+          type: varchar
+          description: Ensembl gene ID of the nearest upstream gene.
+        - name: '"DOWNSTREAM_GENE_ID"'
+          type: varchar
+          description: Ensembl gene ID of the nearest downstream gene.
+        - name: '"UPSTREAM_GENE_DISTANCE"'
+          type: varchar
+          description: Base pairs to the nearest upstream gene.
+        - name: '"DOWNSTREAM_GENE_DISTANCE"'
+          type: varchar
+          description: Base pairs to the nearest downstream gene.
+        - name: '"P-VALUE"'
+          type: varchar
+          description: >
+            Association p-value in scientific notation. Exponents can exceed
+            double precision (values such as 2E-28539 occur), so TRY_CAST
+            returns 0.0 for the strongest hits. Filter with it if convenient,
+            but never sort by it.
+        - name: '"PVALUE_MLOG"'
+          type: varchar
+          description: >
+            Negative log base 10 of the p-value. The correct column to sort on:
+            descending order equals ascending p-value, with no underflow.
+        - name: '"P-VALUE (TEXT)"'
+          type: varchar
+          description: >
+            Free-text qualifier on the p-value, e.g. "(European)", "(male)".
+        - name: '"OR or BETA"'
+          type: varchar
+          description: >
+            Either an odds ratio or a beta coefficient; the column does not say
+            which. Odds ratios are positive and cluster near 1, betas centre on
+            0 and may be negative. Never average without separating the two.
+        - name: '"95% CI (TEXT)"'
+          type: varchar
+          description: >
+            Confidence interval as free text, often carrying the unit that
+            disambiguates OR from beta.
+        - name: '"RISK ALLELE FREQUENCY"'
+          type: varchar
+          description: Frequency of the risk allele. "NR" when not reported.
+        - name: '"INITIAL SAMPLE SIZE"'
+          type: varchar
+          description: >
+            Discovery cohort described in prose, e.g. "12,345 European ancestry
+            cases, 6,789 European ancestry controls". Carries the ancestry
+            description. Not numeric — parse in the coder agent.
+        - name: '"REPLICATION SAMPLE SIZE"'
+          type: varchar
+          description: Replication cohort, same prose format. Often empty.
+        - name: '"PLATFORM [SNPS PASSING QC]"'
+          type: varchar
+          description: Genotyping array and the count of variants passing QC.
+        - name: '"GENOTYPING TECHNOLOGY"'
+          type: varchar
+          description: e.g. "Genome-wide genotyping array", "Exome-wide sequencing".
+        - name: '"CNV"'
+          type: varchar
+          description: Set to Y when the row describes a copy-number association.
+        - name: '"MERGED"'
+          type: varchar
+          description: Set to 1 when the rsID has been retired and merged into another.
+        - name: '"SNP_ID_CURRENT"'
+          type: varchar
+          description: Current dbSNP identifier after any merge.
+      notes:
+        - >
+          Missing values frequently arrive as empty strings rather than NULL.
+          Guard with both: col IS NOT NULL AND col != ''.
+        - >
+          Rows record reported associations, not replicated findings. Sample
+          ancestry is heavily skewed toward European cohorts.
+
+    studies:
+      description: >
+        One row per study, 12 columns, roughly 229,600 rows. Join to
+        associations on "PUBMEDID" — this table has no "STUDY ACCESSION"
+        column. Most fields are already denormalised into `associations`, so
+        join here mainly for "ASSOCIATION COUNT" or to find studies with no
+        associations recorded.
+      columns:
+        - name: '"PUBMEDID"'
+          type: varchar
+          description: PubMed identifier. The join key to associations.
+        - name: '"FIRST AUTHOR"'
+          type: varchar
+          description: First author.
+        - name: '"DATE"'
+          type: varchar
+          description: Publication date, YYYY-MM-DD.
+        - name: '"DATE ADDED TO CATALOG"'
+          type: varchar
+          description: Curation date.
+        - name: '"JOURNAL"'
+          type: varchar
+          description: Journal name.
+        - name: '"LINK"'
+          type: varchar
+          description: PubMed URL.
+        - name: '"STUDY"'
+          type: varchar
+          description: Publication title.
+        - name: '"DISEASE/TRAIT"'
+          type: varchar
+          description: Author-reported trait.
+        - name: '"INITIAL SAMPLE SIZE"'
+          type: varchar
+          description: Discovery cohort description, prose.
+        - name: '"REPLICATION SAMPLE SIZE"'
+          type: varchar
+          description: Replication cohort description, prose.
+        - name: '"PLATFORM [SNPS PASSING QC]"'
+          type: varchar
+          description: Genotyping array and the count of variants passing QC.
+        - name: '"ASSOCIATION COUNT"'
+          type: varchar
+          description: >
+            Number of associations curated for the study. Cast with TRY_CAST
+            before ordering numerically.

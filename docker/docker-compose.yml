@@ -1,0 +1,155 @@
+# docker-compose.yml - Local Development Environment
+# GenomeChat Platform - Backend + Frontend + Sandbox
+# Run from docker/ directory: docker-compose up -d
+
+services:
+  sandbox:
+    build:
+      context: ../sandbox
+      dockerfile: Dockerfile
+    container_name: genomechat-sandbox-dev
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /sandbox:rw,noexec,nosuid,nodev,size=256m
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    env_file:
+      - ../sandbox/.env
+    environment:
+      - SANDBOX_SINGLE_WORKER=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  r-sandbox:
+    build:
+      context: ../r-sandbox
+      dockerfile: Dockerfile
+    container_name: genomechat-r-sandbox-dev
+    ports:
+      - "8081:8081"
+    networks:
+      - app-network
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /sandbox:rw,noexec,nosuid,nodev,size=256m
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    env_file:
+      - ../r-sandbox/.env
+    environment:
+      - SANDBOX_SINGLE_WORKER=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: genomechat-backend-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source for hot-reload (writable for UV virtual environment)
+      - ../backend:/app
+      # Mount a CA bundle so the bundled Claude Agent SDK Node CLI can validate
+      # TLS to Portkey through an intercepting proxy. Read-only at a stable path.
+      - ../.certs:/certs:ro
+    env_file:
+      - ../backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+      - SANDBOX_URL=${SANDBOX_URL:-http://sandbox:8080}
+      - R_SANDBOX_URL=${R_SANDBOX_URL:-http://r-sandbox:8081}
+      # Portkey Configuration
+      - PORTKEY_BASE_URL=${PORTKEY_BASE_URL}
+      - PORTKEY_API_KEY=${PORTKEY_API_KEY}
+      - PORTKEY_AZURE_API_KEY=${PORTKEY_AZURE_API_KEY}
+      - PORTKEY_AZURE_SLUG=${PORTKEY_AZURE_SLUG}
+      # Portkey Bedrock (required when CODER_BACKEND=sdk; reused by memory pipeline)
+      - PORTKEY_BEDROCK_API_KEY=${PORTKEY_BEDROCK_API_KEY}
+      - PORTKEY_BEDROCK_SLUG=${PORTKEY_BEDROCK_SLUG:-bedrock}
+      # Agent backend feature flag — default langchain; set CODER_BACKEND=sdk to enable Phase 1 path
+      - CODER_BACKEND=${CODER_BACKEND:-langchain}
+      # Claude Agent SDK runtime — transcripts land under CLAUDE_CONFIG_DIR/projects/;
+      # keep it inside /tmp so the SDK can write without fighting container filesystem perms.
+      - CLAUDE_CONFIG_DIR=${CLAUDE_CONFIG_DIR:-/tmp/.claude}
+      - SDK_TRANSCRIPT_ROOT=${SDK_TRANSCRIPT_ROOT:-/tmp/genomechat-sdk}
+      # NODE_EXTRA_CA_CERTS is read by Node's TLS stack — without it, the bundled
+      # Claude Agent SDK CLI cannot validate Portkey's TLS chain when traffic goes
+      # through an intercepting proxy, and responses come back empty/malformed.
+      # Points at a cert inside the /certs read-only volume mounted above.
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-/certs/ca-bundle.crt}
+      # SSL_CERT_PATH mirror for Python httpx/requests — same cert, same purpose.
+      - SSL_CERT_PATH=${SSL_CERT_PATH_CONTAINER:-/certs/ca-bundle.crt}
+      # MongoDB Configuration
+      - MONGODB_CONNECTION_STRING=${MONGODB_CONNECTION_STRING}
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-genome_chat}
+      - CHECKPOINTER_TYPE=${CHECKPOINTER_TYPE:-mongodb}
+      # SSL_CERT_PATH is set above and points into the /certs volume. It is
+      # deliberately not `${SSL_CERT_PATH}` — that name is set in backend/.env as
+      # a host-relative path and is not exported into the shell running
+      # `docker compose up`, so the substitution would resolve to empty.
+      - DISABLE_SSL_VERIFY=${DISABLE_SSL_VERIFY:-true}
+      # AWS S3 Configuration - loaded from env_file (./backend/.env)
+      # Do not override here to allow env_file values to be used
+      # SQL Agent Configuration
+      - SQL_AGENT_MODE=${SQL_AGENT_MODE:-agentic}
+      - SQL_HITL_ENABLED=${SQL_HITL_ENABLED:-true}
+      - SQL_ALWAYS_SAVE_TO_S3=${SQL_ALWAYS_SAVE_TO_S3:-true}
+      # Database Configuration — paths come from the profile registry
+      # (DB_REGISTRY_*), not from these legacy variables.
+      - DATABASE_TYPE=${DATABASE_TYPE:-sqlite}
+    command: uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+    container_name: genomechat-frontend-dev
+    ports:
+      - "3100:80"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  app-network:
+    driver: bridge

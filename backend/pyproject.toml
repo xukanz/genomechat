@@ -1,0 +1,91 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "genomechat-backend"
+version = "0.1.0"
+description = "GenomeChat platform backend service"
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.21.0",
+    "bcrypt>=4.0.0",
+    "boto3>=1.41.1",
+    "botocore>=1.41.1",
+    "certifi>=2024.0.0",
+    "email-validator>=2.3.0",
+    "fastapi>=0.121.3",
+    "gunicorn>=23.0.0",
+    "httpx>=0.28.1",
+    "langchain>=1.2.0",
+    "langchain-core>=1.0.7",
+    "langchain-openai>=1.0.3",
+    "langgraph>=1.0.10",
+    "langgraph-checkpoint-mongodb>=0.1.0",
+    "langgraph-checkpoint-sqlite>=3.0.0",
+    "pandas>=2.3.3",
+    "passlib[bcrypt]>=1.7.4",
+    "portkey-ai>=2.0.4",
+    "pydantic>=2.12.4",
+    "pydantic-settings>=2.12.0",
+    "pymongo>=4.15.5",
+    "python-jose[cryptography]>=3.3.0",
+    "python-multipart>=0.0.9",
+    "pyyaml>=6.0.3",
+    "rich>=14.2.0",
+    "uvicorn[standard]>=0.38.0",
+    "duckdb>=1.4.3",
+    "s3fs>=2026.2.0",
+    "pyarrow>=23.0.1",
+    "claude-agent-sdk==0.1.81",
+    "opentelemetry-api>=1.41.1",
+    "opentelemetry-sdk>=1.41.1",
+    "opentelemetry-instrumentation-fastapi>=0.62b1",
+    "opentelemetry-instrumentation-pymongo>=0.62b1",
+    "apscheduler>=3.11.2",
+    "tiktoken>=0.12.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.41.1",
+    # Required by the `ensembl` profile, which queries the public Ensembl
+    # MySQL mirror. That profile is registered and enabled by default, so the
+    # driver is a hard dependency rather than an extra.
+    "mysql-connector-python>=9.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.18.2",
+    "pytest>=9.0.1",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.1.0",
+    "mongomock>=4.3.0",
+    "pytest>=9.0.1",
+    "pytest-asyncio>=1.3.0",
+]
+

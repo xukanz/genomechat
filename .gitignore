@@ -1,0 +1,113 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.swo
+logs/
+tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.DS_Store
+.Python
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.pyre/
+.pytype/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+env/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build & tooling
+build/
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.tsbuildinfo
+
+# Docker & environment
+.env
+.env.*
+!.env.example
+.docker/
+
+# Jupyter
+.ipynb_checkpoints
+
+# IDE & editor
+.idea/
+.vscode/
+*.code-workspace
+*.sublime-workspace
+*.sublime-project
+
+# MCP
+.mcp.json
+
+# Claude Code
+**/.claude/settings.json
+**/.claude/settings.local.json
+
+# SSL Certificates
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+*.p12
+*.pfx
+*.p12
+*.pfx
+
+# Output
+backend/outputs/
+
+# Docs:
+docs/RAAD5C
+docs/future
+# Local sandbox job scratch dir (bare-metal runs)
+.sandbox_jobs/
+
+# Genomics data files
+# Raw downloads from NCBI / EBI — rebuild with scripts/build_genomics_databases.py --download
+backend/databases/_raw/
+# Built artifacts — both are regenerated from the raw sources by
+# scripts/build_genomics_databases.py and are far too large to version
+# (ClinVar SQLite lands at ~1.7 GB, GWAS Parquet at a few hundred MB).
+backend/databases/gwas/*.parquet
+backend/databases/clinvar/*.db
+
+# Development-process assets (PRDs, plans, decision records, spike notes).
+# Kept locally; not part of the published repository.
+.agents/
+
+# Architecture notes and UI reference media — kept locally, not published.
+docs/CODEBASE_ARCHITECTURE.md
+docs/frontend/references/
+
+# Captured third-party prompt reference and one-off generated writeups —
+# kept locally, not published.
+docs/backend/references/
+docs/backend/gen/

@@ -1,0 +1,22 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+pydantic==2.9.0
+numpy==1.26.4
+pandas==2.2.2
+matplotlib==3.9.0
+seaborn==0.13.2
+pillow==10.4.0
+boto3>=1.35.0
+botocore>=1.35.0
+pyyaml>=6.0.1
+
+# Tier 1: Statistics & Data Handling
+scipy>=1.13.0
+statsmodels>=0.14.0
+openpyxl>=3.1.0
+lifelines>=0.29.0
+
+# Interactive Plotting
+plotly>=5.22.0
+kaleido>=0.2.1
+

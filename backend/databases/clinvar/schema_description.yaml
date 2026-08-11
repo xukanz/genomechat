@@ -1,0 +1,134 @@
+schema:
+  tables:
+    variants:
+      description: >
+        One row per human genetic variant in NCBI ClinVar, carrying the
+        aggregated clinical classification across all submitters, the
+        conditions the variant has been linked to, GRCh38 coordinates, and
+        provenance (review tier, submitter count, last evaluation date).
+        Approximately 4.48 million rows. Built from the weekly
+        variant_summary release, filtered to GRCh38.
+      columns:
+        - name: variation_id
+          type: integer
+          description: >
+            ClinVar's stable variant identifier. Effectively unique in this
+            table (about 2,300 exact duplicate rows out of 4.48 million).
+        - name: variant_type
+          type: text
+          description: >
+            Kind of change, e.g. "single nucleotide variant", "Deletion",
+            "Duplication", "Indel", "Microsatellite".
+        - name: name
+          type: text
+          description: >
+            HGVS-style full name, e.g.
+            "NM_007294.4(BRCA1):c.5266dupC (p.Gln1756fs)".
+        - name: gene_id
+          type: integer
+          description: NCBI Gene ID. Null when no single gene applies.
+        - name: gene_symbol
+          type: text
+          description: >
+            HGNC gene symbol. Null for intergenic variants; may list several
+            symbols for events spanning multiple genes. Indexed.
+        - name: clinical_significance
+          type: text
+          description: >
+            Aggregated classification as free text, 107 distinct values.
+            Common ones are "Uncertain significance" (about 52% of rows),
+            "Likely benign", "Benign", "Pathogenic", "Likely pathogenic",
+            and "Conflicting classifications of pathogenicity". Compound
+            labels such as "Pathogenic/Likely pathogenic" exist, so equality
+            filters on a single label silently miss rows — prefer
+            clin_sig_simple or a LIKE pattern. Indexed.
+        - name: clin_sig_simple
+          type: integer
+          description: >
+            Collapsed classification flag. 1 = pathogenic or likely
+            pathogenic, 0 = benign or likely benign, -1 = neither
+            (uncertain, conflicting, or not provided). The reliable way to
+            filter by pathogenicity.
+        - name: rsid
+          type: text
+          description: >
+            dbSNP identifier without the "rs" prefix. Null when the variant
+            has no dbSNP mapping. Indexed.
+        - name: phenotype_ids
+          type: text
+          description: >
+            Ontology cross-references for the associated conditions
+            (MedGen, OMIM, Orphanet, MONDO), delimited.
+        - name: phenotype_list
+          type: text
+          description: >
+            Human-readable condition names for this variant, pipe-delimited
+            when there are several, e.g.
+            "Leri-Weill dyschondrosteosis|not provided". Conditions are
+            packed into this single column rather than expanded into rows.
+            Match with LIKE. "not provided" is a common placeholder entry.
+        - name: origin
+          type: text
+          description: >
+            Allele origin, e.g. "germline", "somatic", "de novo",
+            "inherited", "unknown".
+        - name: chromosome
+          type: text
+          description: >
+            Chromosome name: "1" through "22", "X", "Y", "MT". Stored as
+            text, so numeric ordering requires a cast. Indexed together
+            with start_pos.
+        - name: start_pos
+          type: integer
+          description: GRCh38 start coordinate, 1-based inclusive.
+        - name: stop_pos
+          type: integer
+          description: GRCh38 stop coordinate, 1-based inclusive.
+        - name: ref_allele
+          type: text
+          description: >
+            VCF-style reference allele. Null for variants without a simple
+            allelic representation, such as large copy-number events.
+        - name: alt_allele
+          type: text
+          description: VCF-style alternate allele. Null under the same conditions as ref_allele.
+        - name: review_status
+          type: text
+          description: >
+            Assertion confidence tier, 9 distinct values. About 73% of rows
+            are "criteria provided, single submitter"; only about 22,000
+            variants are "reviewed by expert panel". Other values include
+            "criteria provided, multiple submitters, no conflicts",
+            "criteria provided, conflicting classifications", and
+            "no assertion criteria provided". Maps to the star ratings shown
+            in the ClinVar web UI; there is no numeric star column here.
+        - name: num_submitters
+          type: integer
+          description: Number of submitting laboratories behind this record.
+        - name: last_evaluated
+          type: text
+          description: >
+            Date the classification was last evaluated, as a display string
+            such as "Aug 15, 2024". Frequently null. Not a sortable date
+            type — parse in the coder agent if ordering is needed.
+      indexes:
+        - columns: [gene_symbol]
+        - columns: [clinical_significance]
+        - columns: [rsid]
+        - columns: [variation_id]
+        - columns: [chromosome, start_pos]
+        - columns: [gene_symbol, clinical_significance]
+          description: >
+            Covering index for the most common question shape — counts and
+            classification breakdowns per gene. Keeps such queries under a
+            second across all 4.5M rows.
+        - columns: [review_status, clinical_significance]
+          description: Covering index for classification-by-review-tier cross-tabs.
+      notes:
+        - >
+          There is no assembly column. The build filters to GRCh38, so the
+          value would be constant across every row.
+        - >
+          Gene-level counts reflect sequencing and submission volume as much
+          as biology. Genes on widely used clinical panels are heavily
+          over-represented.

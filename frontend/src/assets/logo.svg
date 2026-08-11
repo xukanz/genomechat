@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="GenomeChat">
+  <title>GenomeChat</title>
+
+  <!--
+    A DNA double helix inside a speech bubble.
+
+    Geometry notes for anyone editing this:
+
+    - The bubble is a rounded rect spanning (12,12)-(116,108) with a tail at
+      the lower left, drawn as a single path so the tail joins the body with
+      no seam.
+
+    - Each strand is four quadratic segments running y 32 -> 49 -> 66 -> 83
+      -> 100, with both control points pinned to the centre line x=64. The
+      two strands start on opposite sides, so they are FURTHEST APART at the
+      segment endpoints (y = 32, 49, 66, 83, 100) and CROSS at the segment
+      midpoints (y ~ 40.5, 57.5, 74.5, 91.5).
+
+    - Base-pair rungs therefore go at y = 49, 66, 83 — the interior widest
+      points. Putting them at the crossings would draw a bar over a single
+      point and read as a smudge.
+
+    - Colours are fixed rather than currentColor: the mark has to hold
+      contrast against both the light sidebar and the dark header.
+      #0066cc matches the app's primary token, hsl(210 100% 40%).
+  -->
+
+  <defs>
+    <linearGradient id="gc-bubble" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a7ae6"/>
+      <stop offset="1" stop-color="#0055ad"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Speech bubble, tail at the lower left -->
+  <path fill="url(#gc-bubble)"
+        d="M32 12h64a20 20 0 0 1 20 20v56a20 20 0 0 1-20 20H52l-22 16 4-16h-2
+           A20 20 0 0 1 12 88V32a20 20 0 0 1 20-20z"/>
+
+  <!-- Two strands, crossing at the midpoint of every segment -->
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round">
+    <path d="M46 32 Q64 40.5 82 49 Q64 57.5 46 66 Q64 74.5 82 83 Q64 91.5 46 100"/>
+    <path d="M82 32 Q64 40.5 46 49 Q64 57.5 82 66 Q64 74.5 46 83 Q64 91.5 82 100"/>
+  </g>
+
+  <!-- Base pairs at the widest interior points -->
+  <g stroke="#ffffff" stroke-width="4.5" stroke-linecap="round" opacity=".7">
+    <line x1="48" y1="49" x2="80" y2="49"/>
+    <line x1="48" y1="66" x2="80" y2="66"/>
+    <line x1="48" y1="83" x2="80" y2="83"/>
+  </g>
+</svg>
