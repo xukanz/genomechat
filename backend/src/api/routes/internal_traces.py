@@ -15,11 +15,8 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from src.config.agent_backends import resolve_agent_backend
 from src.config.settings import settings
 from src.models.observability import (
-    AgentBackendHealth,
-    AgentBackendHealthResponse,
     TraceListResponse,
     TraceSpanSummary,
 )
@@ -37,26 +34,6 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/internal", tags=["internal"])
-
-
-@router.get("/health/agent-backends", response_model=AgentBackendHealthResponse)
-async def agent_backends_health(
-    request: Request,
-    user: User = Depends(require_scopes({"traces:read:own"})),
-) -> AgentBackendHealthResponse:
-    """Report the active backend per agent. Always returns the same shape."""
-    await enforce_rate_limit(user)
-    agents = [
-        AgentBackendHealth(agent=name, backend=resolve_agent_backend(name).value)
-        for name in ("coder", "orchestrator")
-    ]
-    write_access_log(
-        request=request,
-        caller=user,
-        scopes_used={"traces:read:own"},
-        row_count=len(agents),
-    )
-    return AgentBackendHealthResponse(agents=agents)
 
 
 @router.get("/traces", response_model=TraceListResponse)

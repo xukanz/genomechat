@@ -22,14 +22,10 @@ from src.tools.todos import manage_plan
 
 
 def compose_orchestrator_system_prompt(research_mode: ResearchModeType = "standard") -> str:
-    """Return the system prompt used by both orchestrator backends.
+    """Return the orchestrator's system prompt.
 
-    Both the LangChain orchestrator (``create_orchestrator_agent``) and the
-    Phase 2 SDK orchestrator prototype (``invoke_orchestrator_sdk``) call
-    this helper so the prompt is byte-identical on either path. Any
-    behavioral delta between the backends in the Workstream B evaluation
-    must come from the ORCHESTRATION mechanism (``manage_plan`` vs SDK's
-    ``TodoWrite`` + ``AgentDefinition``), not from prompt drift.
+    Kept as a standalone helper so the prompt can be composed (and asserted
+    on in tests) without constructing the agent.
 
     Args:
         research_mode: ``"standard"`` | ``"deep_research"``. Controls which

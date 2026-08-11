@@ -43,7 +43,7 @@ def test_to_document_contains_minimum_commitment_fields(mongomock_client, monkey
 
         with tracer.start_as_current_span("agent.node.coder") as span:
             span.set_attribute("agent.name", "coder")
-            span.set_attribute("agent.backend", "langchain")
+            span.set_attribute("agent.thread_id", "u1:c1")
             span.set_attribute("active_skills", [])
 
     collection = mongomock_client["test_db"]["traces_test"]
@@ -52,7 +52,7 @@ def test_to_document_contains_minimum_commitment_fields(mongomock_client, monkey
     doc = docs[0]
     assert doc["name"] == "agent.node.coder"
     assert doc["attributes"]["agent.name"] == "coder"
-    assert doc["attributes"]["agent.backend"] == "langchain"
+    assert doc["attributes"]["agent.thread_id"] == "u1:c1"
     assert doc["active_skills"] == []
     assert isinstance(doc["start_time"], datetime)
     assert doc["schema_version"] == "1"

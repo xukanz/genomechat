@@ -68,16 +68,12 @@ def test_all_request_knobs_surface_as_tags():
         research_mode="deep_research",
         code_language="python",
         database_id="clinvar_v2",
-        coder_backend_override="sdk",
-        orchestrator_backend_override="sdk",
     )
     tags = set(attrs["langfuse.tags"])
     assert tags == {
         "research_mode:deep_research",
         "code_language:python",
         "database:clinvar_v2",
-        "coder_backend:sdk",
-        "orchestrator_backend:sdk",
     }
 
 
@@ -115,10 +111,8 @@ def test_none_knobs_do_not_produce_empty_tags():
         research_mode=None,
         code_language=None,
         database_id=None,
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
     )
-    # No tags at all for an authenticated user with no overrides.
+    # No tags at all for an authenticated user with no knobs set.
     assert attrs["langfuse.tags"] == []
 
 
@@ -149,38 +143,15 @@ def test_trace_name_has_no_suffix_when_all_defaults():
     assert attrs["langfuse.trace.name"] == "Top 10 V genes?"
 
 
-def test_trace_name_suffix_marks_coder_override():
+def test_trace_name_suffix_marks_deep_research():
     attrs = build_request_trace_attrs(
         user_id=None,
         thread_id="t",
         first_user_message="Top 10 V genes?",
-        coder_backend_override="sdk",
-    )
-    # Suffix makes the A/B run distinguishable at a glance in the trace list.
-    assert attrs["langfuse.trace.name"] == "Top 10 V genes? [coder=sdk]"
-
-
-def test_trace_name_suffix_marks_orchestrator_override_and_deep_research():
-    attrs = build_request_trace_attrs(
-        user_id=None,
-        thread_id="t",
-        first_user_message="Top 10 V genes?",
-        orchestrator_backend_override="sdk",
         research_mode="deep_research",
     )
-    assert attrs["langfuse.trace.name"] == "Top 10 V genes? [orch=sdk, deep]"
-
-
-def test_trace_name_suffix_combines_all_three_markers():
-    attrs = build_request_trace_attrs(
-        user_id=None,
-        thread_id="t",
-        first_user_message="hi",
-        coder_backend_override="sdk",
-        orchestrator_backend_override="sdk",
-        research_mode="deep_research",
-    )
-    assert attrs["langfuse.trace.name"] == "hi [coder=sdk, orch=sdk, deep]"
+    # Suffix makes deep-research runs distinguishable at a glance.
+    assert attrs["langfuse.trace.name"] == "Top 10 V genes? [deep]"
 
 
 def test_trace_name_standard_research_mode_does_not_suffix():
@@ -203,7 +174,7 @@ def test_trace_name_truncation_preserves_suffix_when_truncated():
         user_id=None,
         thread_id="t",
         first_user_message=long_prompt,
-        coder_backend_override="sdk",
+        research_mode="deep_research",
     )
     name = attrs["langfuse.trace.name"]
     assert len(name) <= 80
@@ -226,14 +197,12 @@ def test_input_payload_attached_when_capture_enabled(monkeypatch):
         research_mode="standard",
         code_language="python",
         database_id="clinvar",
-        coder_backend_override="sdk",
     )
     # Input is serialized JSON of the request knobs + prompt.
     raw = attrs["langfuse.observation.input"]
     assert isinstance(raw, str)
     assert '"message": "hello"' in raw
     assert '"database_id": "clinvar"' in raw
-    assert '"coder_backend": "sdk"' in raw
 
 
 def test_input_payload_omitted_when_capture_disabled(monkeypatch):
@@ -322,8 +291,6 @@ def test_name_derived_from_first_markdown_heading(monkeypatch):
     response = "## Top 10 Most Frequently Reported Variants in ClinVar\n\nTRBV19*01 ..."
     name = _compose_trace_name(
         "What are the most frequent V genes?",
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
         research_mode=None,
         output_text=response,
         turn_index=0,
@@ -337,8 +304,6 @@ def test_name_derived_from_bold_phrase_when_no_heading(monkeypatch):
     response = "Here's the answer: **The most frequent V gene is TRBV19**. Details below..."
     name = _compose_trace_name(
         "what is the top gene?",
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
         research_mode=None,
         output_text=response,
         turn_index=0,
@@ -354,8 +319,6 @@ def test_name_falls_back_to_prompt_when_output_unstructured():
     unstructured = "x" * 200  # one long blob, no markdown, one line > 80 chars
     name = _compose_trace_name(
         "brief prompt",
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
         research_mode=None,
         output_text=unstructured,
         turn_index=0,
@@ -370,8 +333,6 @@ def test_name_strips_bold_from_within_heading():
     response = "## **Top 10 Variants** in ClinVar"
     name = _compose_trace_name(
         "q",
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
         research_mode=None,
         output_text=response,
         turn_index=0,
@@ -396,8 +357,6 @@ def test_compose_name_includes_turn_label_t0():
 
     name = _compose_trace_name(
         "hi",
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
         research_mode=None,
         turn_index=0,
     )
@@ -409,8 +368,6 @@ def test_compose_name_includes_turn_label_t2():
 
     name = _compose_trace_name(
         "follow-up question",
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
         research_mode=None,
         turn_index=2,
     )
@@ -423,8 +380,6 @@ def test_compose_name_skips_turn_label_when_none():
 
     name = _compose_trace_name(
         "hi",
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
         research_mode=None,
         turn_index=None,
     )
@@ -438,27 +393,23 @@ def test_compose_name_skips_turn_label_when_negative():
 
     name = _compose_trace_name(
         "hi",
-        coder_backend_override=None,
-        orchestrator_backend_override=None,
         research_mode=None,
         turn_index=-1,
     )
     assert "·" not in name
 
 
-def test_compose_name_turn_label_before_backend_suffix():
+def test_compose_name_turn_label_before_suffix():
     """Order: base · tN [suffix]. Critical for grepping by turn in a
     list view — turn label always comes before brackets."""
     from src.service.observability.trace_enrichment import _compose_trace_name
 
     name = _compose_trace_name(
         "hi",
-        coder_backend_override="sdk",
-        orchestrator_backend_override="sdk",
         research_mode="deep_research",
         turn_index=3,
     )
-    assert name == "hi · t3 [coder=sdk, orch=sdk, deep]"
+    assert name == "hi · t3 [deep]"
 
 
 # ---------------------------------------------------------------------------
@@ -597,7 +548,7 @@ def test_finalize_handles_missing_turn_index_gracefully():
 
 
 def test_finalize_combines_all_dimensions():
-    """Full integration: heading + turn + backend override + payload capture."""
+    """Full integration: heading + turn + deep-research suffix + payload capture."""
     from src.config.settings import settings
     from src.service.observability.trace_enrichment import (
         build_request_trace_finalize_attrs,
@@ -613,13 +564,9 @@ def test_finalize_combines_all_dimensions():
         turn_index=2,
         existing_tags=existing,
         research_mode="deep_research",
-        coder_backend_override="sdk",
-        orchestrator_backend_override="sdk",
     )
-    # Name = heading + turn + backend suffix
-    assert attrs["langfuse.trace.name"] == (
-        "TCR Analysis Complete · t2 [coder=sdk, orch=sdk, deep]"
-    )
+    # Name = heading + turn + deep-research suffix
+    assert attrs["langfuse.trace.name"] == "TCR Analysis Complete · t2 [deep]"
     # Turn metadata + tags merged with originals
     assert attrs["langfuse.metadata.turn_index"] == 2
     merged = attrs["langfuse.tags"]

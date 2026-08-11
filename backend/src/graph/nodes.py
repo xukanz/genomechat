@@ -246,59 +246,8 @@ async def orchestrator_node(
     research_mode = state.get("research_mode", "standard")
     logger.debug(f"Orchestrator using research_mode: {research_mode}")
 
-    # Phase 2 Workstream B — SDK orchestrator prototype dispatch (branch-only).
-    # When the orchestrator backend resolves to SDK (either via settings or
-    # the orchestrator_backend_context ContextVar set by the eval harness),
-    # delegate the ENTIRE multi-worker conversation to invoke_orchestrator_sdk.
-    # Unlike the LangChain path which is re-invoked per LangGraph loop, the
-    # SDK path is self-driving via AgentDefinition + TodoWrite, so we route
-    # directly to __end__ with the synthesized response and skip the defensive
-    # override logic below entirely — that's the point of the prototype.
-    from src.config.agent_backends import AgentBackend, resolve_agent_backend
-
-    orchestrator_backend = resolve_agent_backend("orchestrator")
-    if orchestrator_backend == AgentBackend.SDK:
-        from src.agents.orchestrator_sdk import invoke_orchestrator_sdk
-
-        logger.info("Orchestrator node: dispatching via Claude Agent SDK backend")
-        thread_id = state.get("thread_id") or ""
-        sdk_response = await invoke_orchestrator_sdk(
-            state=state,
-            thread_id=thread_id,
-            research_mode=research_mode,
-        )
-        if not sdk_response.strip():
-            logger.warning("⚠️  orchestrator_sdk returned empty response — surfacing failure marker")
-            sdk_response = (
-                "⚠️ ORCHESTRATOR TASK FAILED: The SDK orchestrator did not produce "
-                "any output. No plan was executed. The workflow cannot continue."
-            )
-        # The SDK orchestrator already handled routing internally via
-        # AgentDefinition handoffs; it returns the synthesized final answer.
-        # Wrap it as an assistant AIMessage named "orchestrator" so the
-        # downstream stream / auto-title code sees it identically to the
-        # LangChain path's final AIMessage.
-        # AIMessage is imported at module level (line 7); re-importing
-        # here would shadow it and make the LangChain branch below hit an
-        # UnboundLocalError because Python decides the name is local.
-        final_message = AIMessage(content=sdk_response, name="orchestrator")
-        # Clear plan + todos so a previous LangChain turn's state can't render
-        # stale through this SDK turn (the SDK orchestrator drives its own
-        # TodoWrite plan internally and does not surface it back into
-        # AgentState — Phase 3 prerequisite). Without this, the SSE pipeline
-        # in chat.py:705-810 would emit the previous turn's snapshot.plan.
-        return Command(
-            goto="__end__",
-            update={
-                "messages": [final_message],
-                "plan": None,
-                "current_step_index": 0,
-                "todos": [],
-            },
-        )
-
-    # LangChain orchestrator path — re-invoked per loop, returns structured
-    # routing decision handled by the rest of this function.
+    # Re-invoked per LangGraph loop; returns a structured routing decision
+    # handled by the rest of this function.
     orchestrator_agent = get_orchestrator_agent(research_mode=research_mode)
 
     # Log message history being passed to orchestrator (last 5 messages)
@@ -686,38 +635,18 @@ async def coder_node(state: AgentState) -> Command[Literal["orchestrator"]]:
     worker_state = _prepare_worker_messages(state)
     code_language = state.get("code_language", "python")
 
-    # Feature-flag dispatch: Phase 1 adds the SDK branch. The outer
-    # @trace_node("coder") span covers both paths and differentiates them
-    # via the agent.backend attribute it already emits. Failures on either
-    # path produce an empty coder_content — preserved below so orchestrator
-    # replanning behaves identically regardless of backend.
-    from src.config.agent_backends import AgentBackend, resolve_agent_backend
+    coder_agent = create_coder_agent(
+        user_id=user_id,
+        project_snippets=project_snippets,
+        code_language=code_language,
+    )
+    result = await coder_agent.ainvoke(
+        worker_state,
+        config={"metadata": {"agent_name": "Coder"}},
+    )
+    coder_content = result["messages"][-1].content if result.get("messages") else ""
 
-    backend = resolve_agent_backend("coder")
-    if backend == AgentBackend.SDK:
-        from src.agents.coder_sdk import invoke_coder_sdk
-
-        logger.info("Coder node: dispatching via Claude Agent SDK backend")
-        coder_content = await invoke_coder_sdk(
-            user_id=user_id,
-            project_snippets=project_snippets,
-            code_language=code_language,
-            state=worker_state,
-            thread_id=thread_id or "",
-        )
-    else:
-        coder_agent = create_coder_agent(
-            user_id=user_id,
-            project_snippets=project_snippets,
-            code_language=code_language,
-        )
-        result = await coder_agent.ainvoke(
-            worker_state,
-            config={"metadata": {"agent_name": "Coder"}},
-        )
-        coder_content = result["messages"][-1].content if result.get("messages") else ""
-
-    logger.info("Coder agent completed task (backend=%s)", backend.value)
+    logger.info("Coder agent completed task")
     logger.debug(f"Coder agent response: {coder_content!r}")
 
     # Signal failure clearly so the orchestrator knows the coder did NOT succeed

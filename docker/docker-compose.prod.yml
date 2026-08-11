@@ -53,15 +53,8 @@ services:
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=info
-      # Phase 1 SDK runtime — must point at a writable path inside the container.
-      # CLAUDE_CONFIG_DIR controls where the Claude Agent SDK writes transcript
-      # JSONLs (~/.claude/projects/<project_key>/ by default, but honors the
-      # override). /tmp is the only always-writable path on read-only-rootfs
-      # deployments. Override per-env in .env.prod if needed.
-      - CLAUDE_CONFIG_DIR=${CLAUDE_CONFIG_DIR:-/tmp/.claude}
-      - SDK_TRANSCRIPT_ROOT=${SDK_TRANSCRIPT_ROOT:-/tmp/genomechat-sdk}
-      # CODER_BACKEND, PORTKEY_BEDROCK_* come from .env.prod via env_file —
-      # no override here so the prod secret never leaks into repo config.
+      # PORTKEY_* and the rest of the runtime config come from .env.prod via
+      # env_file — no override here so prod secrets never leak into repo config.
     # Use gunicorn with multiple workers in production
     command: gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --access-logfile - --error-logfile -
     restart: unless-stopped

@@ -1,6 +1,6 @@
 Create a merge request / pull request with rich, durable traceability so a reviewer (or a future engineer six months from now) can reconstruct the full development process from the PR description alone.
 
-Optional argument: target branch. If the user passes one (e.g. `/create-pr main` or `/create-pr feat/claude-agent-sdk`), use it. Otherwise default to `main` — BUT if the current branch is part of a phase-based initiative with an integration branch, ask the user whether to target the integration branch or main before pushing.
+Optional argument: target branch. If the user passes one (e.g. `/create-pr main` or `/create-pr develop`), use it. Otherwise default to `main` — BUT if the current branch is part of a phase-based initiative with an integration branch, ask the user whether to target the integration branch or main before pushing.
 
 ## Platform detection
 
@@ -37,7 +37,7 @@ Run these in parallel:
 - `ls .agents/PRPs/feature_requests/ 2>/dev/null` — PRDs
 - `ls docs/backend/ docs/ 2>/dev/null | head -40` — operator guides and related docs
 
-For each plan / notes / PRD file, scan the head (first ~40 lines) to identify which one matches the branch's work. The branch name usually correlates: `feat/phase-1-coder-swap` → `.agents/plans/phase-1-claude-agent-sdk-coder-swap.md`, `.agents/notes/phase1-spike-findings.md`. Report what you found before drafting the description — don't assume silently.
+For each plan / notes / PRD file, scan the head (first ~40 lines) to identify which one matches the branch's work. The branch name usually correlates: `feat/memory-pipeline` → `.agents/plans/memory-pipeline.md`, `.agents/notes/memory-spike-findings.md`. Report what you found before drafting the description — don't assume silently.
 
 If the repo uses `.github/pull_request_template.md` or a GitLab equivalent, read it and honor its section structure on top of the traceability sections below.
 

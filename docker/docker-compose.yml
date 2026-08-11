@@ -69,8 +69,9 @@ services:
     volumes:
       # Mount source for hot-reload (writable for UV virtual environment)
       - ../backend:/app
-      # Mount a CA bundle so the bundled Claude Agent SDK Node CLI can validate
-      # TLS to Portkey through an intercepting proxy. Read-only at a stable path.
+      # Mount a CA bundle so Python's httpx/requests can validate TLS to
+      # Portkey through an intercepting proxy. Read-only at a stable path;
+      # SSL_CERT_PATH below points into it.
       - ../.certs:/certs:ro
     env_file:
       - ../backend/.env
@@ -85,21 +86,10 @@ services:
       - PORTKEY_API_KEY=${PORTKEY_API_KEY}
       - PORTKEY_AZURE_API_KEY=${PORTKEY_AZURE_API_KEY}
       - PORTKEY_AZURE_SLUG=${PORTKEY_AZURE_SLUG}
-      # Portkey Bedrock (required when CODER_BACKEND=sdk; reused by memory pipeline)
+      # Portkey Bedrock — used by the agents and the memory pipeline
       - PORTKEY_BEDROCK_API_KEY=${PORTKEY_BEDROCK_API_KEY}
       - PORTKEY_BEDROCK_SLUG=${PORTKEY_BEDROCK_SLUG:-bedrock}
-      # Agent backend feature flag — default langchain; set CODER_BACKEND=sdk to enable Phase 1 path
-      - CODER_BACKEND=${CODER_BACKEND:-langchain}
-      # Claude Agent SDK runtime — transcripts land under CLAUDE_CONFIG_DIR/projects/;
-      # keep it inside /tmp so the SDK can write without fighting container filesystem perms.
-      - CLAUDE_CONFIG_DIR=${CLAUDE_CONFIG_DIR:-/tmp/.claude}
-      - SDK_TRANSCRIPT_ROOT=${SDK_TRANSCRIPT_ROOT:-/tmp/genomechat-sdk}
-      # NODE_EXTRA_CA_CERTS is read by Node's TLS stack — without it, the bundled
-      # Claude Agent SDK CLI cannot validate Portkey's TLS chain when traffic goes
-      # through an intercepting proxy, and responses come back empty/malformed.
-      # Points at a cert inside the /certs read-only volume mounted above.
-      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-/certs/ca-bundle.crt}
-      # SSL_CERT_PATH mirror for Python httpx/requests — same cert, same purpose.
+      # CA bundle for Python httpx/requests, inside the /certs volume above.
       - SSL_CERT_PATH=${SSL_CERT_PATH_CONTAINER:-/certs/ca-bundle.crt}
       # MongoDB Configuration
       - MONGODB_CONNECTION_STRING=${MONGODB_CONNECTION_STRING}

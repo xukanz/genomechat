@@ -1,8 +1,8 @@
 # GenomeChat
 
-A full-stack conversational AI platform with multi-agent capabilities for genomics research, data analysis, and code generation. Ask questions in plain language across public variant, association, and annotation databases; the system plans the work, queries the data, runs analysis code, searches the literature, and streams a synthesised answer back.
+A full-stack conversational AI platform with multi-agent capabilities for genomics research, data analysis, and code generation. Ask questions in plain language across public variant, association, and annotation databases; the system plans the work, queries the data, runs analysis code, and streams a synthesised answer back.
 
-Built with FastAPI, LangGraph, the Claude Agent SDK, React, and TypeScript.
+Built with FastAPI, LangGraph, LangChain, React, and TypeScript.
 
 ## 📦 Monorepo Structure
 
@@ -11,18 +11,15 @@ genomechat/
 ├── backend/                     # Platform backend services
 │   ├── src/
 │   │   ├── agents/              # LangGraph agents (Coordinator, Orchestrator, Coder, SQL Agent)
-│   │   │                        #   + SDK variants (coder_sdk, orchestrator_sdk)
 │   │   ├── api/                 # FastAPI routes and application
-│   │   ├── config/              # Configuration (settings, database registry, agent backends)
+│   │   ├── config/              # Configuration (settings, database registry)
 │   │   ├── graph/               # LangGraph state and builder
 │   │   ├── models/              # Pydantic models
 │   │   ├── prompts/             # Agent system prompts (with per-database context)
 │   │   ├── service/
 │   │   │   ├── database/        # Connections (SQLite, DuckDB, MySQL, Postgres, …)
-│   │   │   ├── mcp/             # In-process MCP servers wrapping tools for the SDK
 │   │   │   ├── memory/          # Memory pipeline (Phase 0.5, default off)
-│   │   │   ├── observability/   # OpenTelemetry tracing + MongoDB exporter
-│   │   │   └── sdk_runtime/     # Claude Agent SDK transcript isolation
+│   │   │   └── observability/   # OpenTelemetry tracing + MongoDB exporter
 │   │   ├── tools/               # LangChain tools for agents
 │   │   └── utils/               # Utility functions
 │   ├── databases/               # Built database artifacts (see Data Sources)
@@ -69,17 +66,6 @@ Built with LangGraph:
 - **Coder** — generates and executes Python or R in a sandboxed service
 - **SQL Agent** — schema-aware SQL generation with a validation and safety pipeline
 - **Summarizer** — compresses long conversations when the context window fills
-
-### Dual Agent Backends
-
-Worker agents can run through either the LangChain factory or the **Claude Agent SDK**, selected per agent by feature flag and defaulting to LangChain:
-
-```bash
-CODER_BACKEND=sdk            # route the coder through claude-agent-sdk
-ORCHESTRATOR_BACKEND=sdk     # prototype — see docs/backend/phase2_operator_guide.md
-```
-
-Both paths share the same system prompts, the same tool surface (MCP-wrapped), and the same failure semantics, so the two are directly comparable. The SDK path requires the `claude` CLI on `PATH`.
 
 ### Observability
 
@@ -144,7 +130,7 @@ Long conversations are summarised automatically at 70% of the model's input wind
 - Node.js 18+
 - MongoDB — required, and not only for checkpoints: user accounts, conversations, projects, reports, and file metadata all live there
 - An LLM provider (see Environment Variables)
-- Optional: AWS S3 for generated files, the `claude` CLI for the SDK backends, R for the R sandbox
+- Optional: AWS S3 for generated files, R for the R sandbox
 
 ### Backend Setup
 
@@ -276,6 +262,6 @@ uv run pytest tests/test_config/test_database_registry.py -v
 
 ## 🙏 Acknowledgments
 
-Built with [LangGraph](https://github.com/langchain-ai/langgraph), the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python), FastAPI, and React.
+Built with [LangGraph](https://github.com/langchain-ai/langgraph), [LangChain](https://github.com/langchain-ai/langchain), FastAPI, and React.
 
 Data courtesy of [NCBI ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/), the [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/), and [Ensembl](https://www.ensembl.org/).

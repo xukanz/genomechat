@@ -143,12 +143,6 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null)
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
   const suppressHistoryReloadRef = useRef(false)
-  // When the SSE handler sets currentConversationId after the first message of
-  // a brand-new chat (null → thread_id), we must NOT clear the user's backend
-  // overrides — they explicitly chose them for this conversation. This ref is
-  // set alongside suppressHistoryReloadRef and consumed by the override-reset
-  // effect below.
-  const suppressOverrideResetRef = useRef(false)
 
   // AbortController for cancelling active streams
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -160,12 +154,7 @@ export function useChat() {
   // Get current conversation ID from store (used in useEffect)
   // For sendMessage, we use getState() to avoid closure issues
   const { currentConversationId, setStreamingState } = useConversationStore()
-  const {
-    isDeepResearchEnabled,
-    codeLanguage,
-    coderBackendOverride,
-    orchestratorBackendOverride,
-  } = useUIStore()
+  const { isDeepResearchEnabled, codeLanguage } = useUIStore()
 
   // Cancel the current stream
   const cancelStream = useCallback(() => {
@@ -178,26 +167,6 @@ export function useChat() {
       setStreamingState(false)
     }
   }, [setStreamingState])
-
-  // Reset per-request backend overrides whenever the active conversation
-  // changes. Otherwise a SDK toggle from conversation A silently bleeds into
-  // conversation B, contaminating Phase 2 A/B evidence. The exception is the
-  // null → thread_id transition fired by the SSE handler after the first
-  // message of a brand-new chat — that one is bookkeeping, not a user switch,
-  // so we suppress the reset for that single transition only.
-  useEffect(() => {
-    if (suppressOverrideResetRef.current) {
-      suppressOverrideResetRef.current = false
-      return
-    }
-    const ui = useUIStore.getState()
-    if (ui.coderBackendOverride !== null) {
-      ui.setCoderBackendOverride(null)
-    }
-    if (ui.orchestratorBackendOverride !== null) {
-      ui.setOrchestratorBackendOverride(null)
-    }
-  }, [currentConversationId])
 
   // Cancel stream when conversation changes (user confirmed switch or short stream)
   useEffect(() => {
@@ -525,11 +494,6 @@ export function useChat() {
             research_mode: isDeepResearchEnabled ? 'deep_research' : 'standard',
             code_language: codeLanguage,
             database_id: activeDatabase || undefined,  // Pass active database
-            // Phase 2 Workstream A — per-request coder backend override.
-            // `null` → omit from body, server uses its configured default.
-            coder_backend: coderBackendOverride ?? undefined,
-            // Phase 2 Workstream B — per-request orchestrator backend override.
-            orchestrator_backend: orchestratorBackendOverride ?? undefined,
           },
           (event: StreamEvent) => {
             // Handle different event types
@@ -566,7 +530,6 @@ export function useChat() {
                           agent: event.agent_name,
                           status: 'working',
                           startTime: new Date(),
-                          backend: event.agent_backend ?? null,
                         }
                       ]
                     }
@@ -601,10 +564,6 @@ export function useChat() {
                           status: 'completed' as const,
                           content: event.content,
                           endTime: new Date(),
-                          // Prefer the backend from the end event; fall back to
-                          // whatever the start event recorded. Covers the case
-                          // where a backend mid-stream flag-flip is ever enabled.
-                          backend: event.agent_backend ?? activity.backend ?? null,
                         }
                       : activity
                   )
@@ -729,11 +688,6 @@ export function useChat() {
 
                 // Set as current conversation immediately for continuity
                 suppressHistoryReloadRef.current = true
-                // The user picked these backend toggles deliberately for this
-                // brand-new chat; the conversation-id transition that
-                // immediately follows is bookkeeping, not a user-driven
-                // switch — preserve the overrides through it.
-                suppressOverrideResetRef.current = true
                 // Update stream ref to match new conversation
                 streamConversationRef.current = event.thread_id
                 storeState.setCurrentConversation(event.thread_id)
@@ -799,13 +753,7 @@ export function useChat() {
         streamConversationRef.current = null
       }
     },
-    [
-      isDeepResearchEnabled,
-      codeLanguage,
-      coderBackendOverride,
-      orchestratorBackendOverride,
-      setStreamingState,
-    ]
+    [isDeepResearchEnabled, codeLanguage, setStreamingState]
   )
 
   const clearError = useCallback(() => {

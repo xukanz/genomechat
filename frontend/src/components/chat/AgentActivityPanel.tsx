@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Code2, Database, Brain, Workflow, CheckCircle2, Loader2, Sparkles } from "lucide-react"
+import { Code2, Database, Brain, Workflow, CheckCircle2, Loader2 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import type { AgentActivity } from "../../types/conversation"
 
@@ -29,7 +29,6 @@ export function AgentActivityPanel({ activities }: AgentActivityPanelProps) {
       {activities.map((activity, idx) => {
         const Icon = agentIcons[activity.agent] || Brain
         const colorClass = agentColors[activity.agent] || "text-gray-600 bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-        const isSdk = activity.backend === "sdk"
 
         return (
           <motion.div
@@ -44,15 +43,6 @@ export function AgentActivityPanel({ activities }: AgentActivityPanelProps) {
           >
             <Icon className="h-3.5 w-3.5" />
             <span>{activity.agent}</span>
-            {isSdk && (
-              <span
-                title="Ran through Claude Agent SDK (Phase 1 feature-flag)"
-                className="flex items-center gap-1 rounded-full border border-current/30 bg-white/40 dark:bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-              >
-                <Sparkles className="h-2.5 w-2.5" />
-                SDK
-              </span>
-            )}
             {activity.status === "thinking" && (
               <div className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
             )}

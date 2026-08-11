@@ -1,4 +1,4 @@
-"""Integration tests for /internal/traces and /internal/health/agent-backends."""
+"""Integration tests for the /internal/traces endpoints."""
 
 from datetime import datetime, timezone
 
@@ -36,17 +36,6 @@ def api_client(mongomock_client, monkeypatch):
     yield TestClient(app)
 
     app.dependency_overrides.pop(get_current_user, None)
-
-
-def test_agent_backends_health(api_client):
-    r = api_client.get("/internal/health/agent-backends")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["schema_version"] == "1"
-    names = {a["agent"] for a in body["agents"]}
-    assert names == {"coder", "orchestrator"}
-    for row in body["agents"]:
-        assert row["backend"] == "langchain"
 
 
 def test_list_traces_own_tenant_returns_owned_spans(api_client, mongomock_client, monkeypatch):
@@ -147,9 +136,9 @@ def test_raw_endpoint_501_for_non_holder(api_client):
 
 
 def test_access_log_written(api_client, mongomock_client):
-    api_client.get("/internal/health/agent-backends")
+    api_client.get("/internal/traces")
     rows = list(mongomock_client["test_db"]["observability_access_log"].find())
-    assert any(r.get("path") == "/internal/health/agent-backends" for r in rows)
+    assert any(r.get("path") == "/internal/traces" for r in rows)
 
 
 def test_list_traces_returns_full_trace_tree(api_client, mongomock_client):

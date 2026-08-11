@@ -24,7 +24,6 @@ from typing import Any, Callable
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-from src.config.agent_backends import resolve_agent_backend
 from src.config.settings import settings
 from src.utils.context import thread_id_context
 
@@ -63,7 +62,6 @@ def trace_node(agent_name: str) -> Callable:
 
         return {
             "agent.name": agent_name,
-            "agent.backend": resolve_agent_backend(agent_name).value,
             "agent.thread_id": read("thread_id"),
             "agent.database_id": read("database_id"),
             "agent.research_mode": read("research_mode"),

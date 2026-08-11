@@ -42,11 +42,9 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Failed to setup tracing; continuing without OTel")
 
-    # APScheduler hosts Phase 0 (S3 archive), Phase 0.5 (memory consolidation),
-    # and Phase 1 (SDK transcript orphan cleanup) jobs so we run at most one
-    # scheduler per process. Phase 1's cleanup job is always scheduled — it is
-    # harmless on LangChain-only pods (sweeps an empty directory) and prevents
-    # unbounded growth under ~/.claude/projects/ when CODER_BACKEND=sdk.
+    # APScheduler hosts the S3 trace archive and memory consolidation jobs so
+    # we run at most one scheduler per process. If neither is enabled, the
+    # scheduler is never started.
     scheduler = None
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -67,23 +65,6 @@ async def lifespan(app: FastAPI):
                 minutes=settings.memory_consolidation_interval_minutes,
                 id="memory_consolidation",
             )
-
-        # Phase 1: crash-recovery sweep on startup + periodic orphan cleanup
-        try:
-            from src.service.sdk_runtime import cleanup_orphans
-
-            removed = cleanup_orphans()
-            if removed:
-                logger.info("Phase 1 startup sweep removed %d orphaned transcript dir(s)", removed)
-
-            scheduler.add_job(
-                cleanup_orphans,
-                "interval",
-                minutes=settings.sdk_orphan_cleanup_interval_minutes,
-                id="sdk_orphan_cleanup",
-            )
-        except Exception:
-            logger.exception("Failed to schedule SDK orphan cleanup; continuing")
 
         if scheduler.get_jobs():
             scheduler.start()

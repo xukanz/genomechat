@@ -5,7 +5,6 @@ import { Textarea } from "../ui/textarea"
 import { Switch } from "../ui/switch"
 import { useUIStore } from "../../store/uiStore"
 import { useDatabaseStore } from "../../store/databaseStore"
-import { BackendSettingsMenu } from "./BackendSettingsMenu"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import { BRANDING } from "../../config/branding"
 
@@ -158,11 +157,6 @@ export function MessageInput({ onSendMessage, isLoading, disabled, disabledMessa
               {codeLanguage === 'python' ? 'Python' : codeLanguage === 'r' ? 'R' : 'Auto'}
             </span>
           </button>
-          {/* Phase 2 worker-backend overrides — Coder + Orchestrator under a
-              single gear menu to keep the composer compact. The gear turns
-              amber whenever either override is active, so the state stays
-              visible without opening the menu. */}
-          <BackendSettingsMenu />
           {/* Database Connection Indicator */}
           <div className={`flex h-[22px] items-center gap-1 rounded-full border px-2 py-0.5 shadow-inner ${
             activeDatabase

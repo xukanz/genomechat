@@ -65,26 +65,6 @@ class ChatRequest(BaseModel):
         None,
         description="Database profile ID to use for this request (e.g., 'clinvar', 'gwas')",
     )
-    coder_backend: Literal["langchain", "sdk"] | None = Field(
-        default=None,
-        description=(
-            "Per-request coder backend override. When set, takes precedence "
-            "over settings.coder_backend for this request only (via the "
-            "coder_backend_context ContextVar). None falls back to the "
-            "configured default. Introduced in Phase 2 as a dev/pilot-friendly "
-            "binary toggle; no percentage routing."
-        ),
-    )
-    orchestrator_backend: Literal["langchain", "sdk"] | None = Field(
-        default=None,
-        description=(
-            "Per-request orchestrator backend override (Phase 2 Workstream B). "
-            "When set, takes precedence over settings.orchestrator_backend "
-            "for this request only (via orchestrator_backend_context). Same "
-            "binary-toggle semantics as coder_backend. The SDK orchestrator "
-            "is a prototype — see .agents/decisions/phase2-orchestrator-sdk.md."
-        ),
-    )
 
 
 class ChatResponse(BaseModel):
@@ -133,15 +113,6 @@ class StreamEvent(BaseModel):
     content: str = Field(..., description="Event content")
     thread_id: str | None = Field(None, description="Thread ID if applicable")
     agent_name: str | None = Field(None, description="Name of the agent generating the event")
-    agent_backend: str | None = Field(
-        None,
-        description=(
-            "Agent backend runtime for worker nodes ('langchain' | 'sdk'). "
-            "Populated on agent_start / agent_end so the frontend can surface "
-            "which backend handled the turn (useful for Phase 1+ SDK dev/test). "
-            "None for non-worker events."
-        ),
-    )
     file_metadata: dict | None = Field(None, description="File metadata for file events")
     token_usage: dict | None = Field(
         None,

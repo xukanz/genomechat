@@ -148,31 +148,6 @@ def test_stream_chat_emits_root_request_span_with_session_and_tags(
     assert "anonymous" in tags
 
 
-def test_stream_chat_root_span_includes_backend_override_tags(
-    in_memory_span_exporter, _patch_graph_and_checkpointer, _patch_chat_tracer
-):
-    """When a request sets coder_backend / orchestrator_backend overrides,
-    each surfaces as a separate tag so Langfuse users can filter A/B runs."""
-    client = TestClient(app)
-    with client.stream(
-        "POST",
-        "/chat/stream",
-        json={
-            "message": "hi",
-            "thread_id": "t-1",
-            "coder_backend": "sdk",
-            "orchestrator_backend": "langchain",
-        },
-    ) as resp:
-        _consume_stream(resp)
-
-    span = _find_request_span(in_memory_span_exporter)
-    assert span is not None
-    tags = set(span.attributes.get("langfuse.tags") or [])
-    assert "coder_backend:sdk" in tags
-    assert "orchestrator_backend:langchain" in tags
-
-
 def test_stream_chat_root_span_is_noop_when_otel_disabled(
     in_memory_span_exporter, _patch_graph_and_checkpointer, _patch_chat_tracer, monkeypatch
 ):

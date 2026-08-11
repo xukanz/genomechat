@@ -17,7 +17,6 @@ async def test_async_node_emits_span_with_minimum_attributes(in_memory_span_expo
     s = spans[0]
     assert s.name == "agent.node.coder"
     assert s.attributes["agent.name"] == "coder"
-    assert s.attributes["agent.backend"] == "langchain"
     assert s.attributes["agent.thread_id"] == "t1"
     assert s.attributes["agent.database_id"] == "clinvar"
     assert s.attributes["agent.research_mode"] == "quick"
@@ -73,15 +72,15 @@ async def test_node_preserves_error_status_set_by_caller(in_memory_span_exporter
 
     @trace_node("orchestrator")
     async def soft_failure(state):
-        # Mirrors orchestrator_sdk._record_failure_on_parent_span
-        trace.get_current_span().set_status(Status(StatusCode.ERROR, "sdk.timeout"))
+        # Node catches its own failure and returns "" instead of raising.
+        trace.get_current_span().set_status(Status(StatusCode.ERROR, "worker.timeout"))
         return ""
 
     result = await soft_failure({})
     assert result == ""
     span = in_memory_span_exporter.get_finished_spans()[0]
     assert span.status.status_code.name == "ERROR"
-    assert span.status.description == "sdk.timeout"
+    assert span.status.description == "worker.timeout"
 
 
 def test_sync_node_preserves_error_status_set_by_caller(in_memory_span_exporter):

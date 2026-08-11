@@ -11,9 +11,9 @@ Attribute contract (Langfuse-native keys):
 
   ``langfuse.trace.name``              — human-readable label. Default:
                                           truncated first user message plus a
-                                          short backend-mix suffix when any
-                                          override is active (so the trace
-                                          list is scannable for A/B runs).
+                                          turn label and a ``[deep]`` suffix
+                                          on deep-research turns (so the trace
+                                          list stays scannable).
   ``langfuse.session.id``              — conversation thread identifier. All
                                           spans tagged with the same
                                           session_id group into one Langfuse
@@ -23,8 +23,8 @@ Attribute contract (Langfuse-native keys):
                                           the trace to that user.
   ``langfuse.tags``                    — flat list[str] of request-shape
                                           tags: research mode, code language,
-                                          active database, backend overrides,
-                                          anonymous. Powers the tag filter.
+                                          active database, anonymous. Powers
+                                          the tag filter.
   ``langfuse.observation.input``       — JSON blob with prompt + request
                                           knobs. Populates the trace-level
                                           Input column in Langfuse's UI.
@@ -98,7 +98,7 @@ def _derive_name_from_output(output_text: str) -> str | None:
     falls back to the prompt-based name in that case.
 
     The returned title is NOT truncated here — the caller composes it
-    with the backend suffix first and truncates the whole string so the
+    with the turn/mode suffix first and truncates the whole string so the
     suffix isn't sacrificed for title length.
     """
     if not output_text:
@@ -156,8 +156,6 @@ def _turn_label(turn_index: int | None) -> str | None:
 def _compose_trace_name(
     first_user_message: str,
     *,
-    coder_backend_override: str | None,
-    orchestrator_backend_override: str | None,
     research_mode: str | None,
     output_text: str | None = None,
     turn_index: int | None = None,
@@ -176,23 +174,22 @@ def _compose_trace_name(
     on the first turn) so the trace list has a uniform column width and
     operators can spot follow-up turns at a glance.
 
-    Backend suffix (``[coder=sdk, orch=sdk, deep]``) is appended
-    whenever any override or deep_research is active, for A/B
-    distinguishability.
+    A ``[deep]`` suffix is appended when deep_research is active, so the
+    two research modes stay distinguishable in the trace list.
 
     Examples::
 
         # First turn, defaults, name derived from response heading
         "Top 10 Most Frequently Reported Genes in ClinVar · t0"
 
-        # Second turn, SDK orchestrator + deep research
-        "Top 10 Genes in ClinVar · t1 [orch=sdk, deep]"
+        # Second turn, deep research
+        "Top 10 Genes in ClinVar · t1 [deep]"
 
         # Mid-stream fallback — turn index known, output not yet
         "What are the most frequently used V genes? · t0"
 
     Truncation at ``_NAME_MAX_CHARS`` is applied to the whole result so
-    the turn + backend suffix isn't clipped before the title is.
+    the turn + mode suffix isn't clipped before the title is.
     """
     derived: str | None = None
     if output_text:
@@ -205,10 +202,6 @@ def _compose_trace_name(
         base = f"{base} · {turn}"
 
     suffix_parts: list[str] = []
-    if coder_backend_override:
-        suffix_parts.append(f"coder={coder_backend_override}")
-    if orchestrator_backend_override:
-        suffix_parts.append(f"orch={orchestrator_backend_override}")
     if research_mode == "deep_research":
         suffix_parts.append("deep")
 
@@ -246,8 +239,6 @@ def build_request_trace_attrs(
     research_mode: str | None = None,
     code_language: str | None = None,
     database_id: str | None = None,
-    coder_backend_override: str | None = None,
-    orchestrator_backend_override: str | None = None,
 ) -> dict[str, Any]:
     """Return the trace-level attribute dict for the request's root span.
 
@@ -279,11 +270,6 @@ def build_request_trace_attrs(
         research_mode: ``"standard"`` | ``"deep_research"`` | None.
         code_language: ``"python"`` | ``"r"`` | ``"auto"`` | None.
         database_id: active database profile, or None.
-        coder_backend_override: ``"langchain"`` | ``"sdk"`` | None — set
-            only when the request carried a per-request override. Not
-            the resolved backend: that's already emitted per-node via
-            ``agent.backend`` on node spans.
-        orchestrator_backend_override: same contract for the orchestrator.
     """
     if not settings.otel_enabled:
         return {}
@@ -295,18 +281,12 @@ def build_request_trace_attrs(
         tags.append(f"code_language:{code_language}")
     if database_id:
         tags.append(f"database:{database_id}")
-    if coder_backend_override:
-        tags.append(f"coder_backend:{coder_backend_override}")
-    if orchestrator_backend_override:
-        tags.append(f"orchestrator_backend:{orchestrator_backend_override}")
     if user_id is None:
         tags.append("anonymous")
 
     attrs: dict[str, Any] = {
         "langfuse.trace.name": _compose_trace_name(
             first_user_message,
-            coder_backend_override=coder_backend_override,
-            orchestrator_backend_override=orchestrator_backend_override,
             research_mode=research_mode,
         ),
         "langfuse.session.id": thread_id,
@@ -325,8 +305,6 @@ def build_request_trace_attrs(
                 "research_mode": research_mode,
                 "code_language": code_language,
                 "database_id": database_id,
-                "coder_backend": coder_backend_override,
-                "orchestrator_backend": orchestrator_backend_override,
             }
         )
     return attrs
@@ -339,8 +317,6 @@ def build_request_trace_finalize_attrs(
     turn_index: int | None,
     existing_tags: list[str] | None = None,
     research_mode: str | None = None,
-    coder_backend_override: str | None = None,
-    orchestrator_backend_override: str | None = None,
 ) -> dict[str, Any]:
     """Return the end-of-stream enrichment dict for the root span.
 
@@ -348,7 +324,7 @@ def build_request_trace_finalize_attrs(
     finishes:
 
     - **Updated trace name** — heading/bold/line extracted from the
-      response, plus the turn label (``· tN``) and backend suffix.
+      response, plus the turn label (``· tN``) and mode suffix.
     - **Output payload** — ``langfuse.observation.output`` with the
       synthesized assistant response (gated on
       ``trace_capture_payloads``).
@@ -359,7 +335,7 @@ def build_request_trace_finalize_attrs(
 
     Tag-merge semantics: OTel ``span.set_attribute("langfuse.tags", …)``
     OVERWRITES — there is no native list-merge. To add the turn tags
-    without losing the research_mode / anonymous / backend tags set at
+    without losing the research_mode / anonymous tags set at
     stream-open, the caller passes the original tag list via
     ``existing_tags`` and this helper returns the concatenated list.
 
@@ -379,8 +355,6 @@ def build_request_trace_finalize_attrs(
     # Updated trace name — always emitted (doesn't carry raw payload).
     attrs["langfuse.trace.name"] = _compose_trace_name(
         first_user_message,
-        coder_backend_override=coder_backend_override,
-        orchestrator_backend_override=orchestrator_backend_override,
         research_mode=research_mode,
         output_text=output if isinstance(output, str) else None,
         turn_index=turn_index,

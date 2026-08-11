@@ -148,30 +148,6 @@ class Settings(BaseSettings):
         description="Portkey API base URL",
     )
 
-    @property
-    def portkey_anthropic_base_url(self) -> str:
-        """``portkey_base_url`` with a trailing ``/v1`` segment stripped.
-
-        Portkey's virtual keys expect the gateway root URL (no ``/v1`` suffix)
-        when used with Anthropic-SDK-shaped clients — including the bundled
-        Claude Agent SDK CLI — because those clients append ``/v1/messages``
-        themselves. Passing the ``/v1``-suffixed value produces
-        ``/v1/v1/messages``, which Portkey forwards to Bedrock and Bedrock
-        rejects with an AWS Coral ``UnknownOperationException`` (returned
-        as HTTP 200 with an error body, which Node's Anthropic SDK cannot
-        parse → generic "empty or malformed response" failure).
-
-        LangChain paths MUST keep using :attr:`portkey_base_url` directly —
-        their Portkey client expects ``/v1`` in the base.
-
-        Stripping is exact-segment: ``/v1`` only, not ``/v100`` or mid-path
-        ``/v1/messages``. Handles an optional trailing slash.
-        """
-        base = self.portkey_base_url.rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3]
-        return base
-
     # Azure Provider (Required - primary provider)
     portkey_azure_api_key: str = Field(..., description="Portkey Azure API key")
     portkey_azure_slug: str = Field(
@@ -440,87 +416,6 @@ class Settings(BaseSettings):
         description="Per-attribute payload char cap when trace_capture_payloads=true",
     )
 
-    # —— Agent backend feature flags (Phase 0 declares; Phase 1 dispatches) ——
-    coder_backend: str = Field(
-        default="langchain",
-        description="Agent backend: langchain | sdk",
-    )
-    orchestrator_backend: str = Field(
-        default="langchain",
-        description="MVP: langchain only",
-    )
-
-    # —— Claude Agent SDK runtime (Phase 1) ——
-    sdk_transcript_root: str = Field(
-        default="/tmp/genomechat-sdk",
-        description="Root for per-request SDK transcript anchor dirs (see PRD Risk 3). "
-        "SDK transcripts actually land under ~/.claude/projects/<encoded-cwd>/ — "
-        "this root anchors the encoded prefix, not the data itself.",
-    )
-    sdk_orphan_cleanup_max_age_seconds: int = Field(
-        default=3600,
-        ge=60,
-        le=86400,
-        description="Max age before a stale transcript directory is swept",
-    )
-    sdk_orphan_cleanup_interval_minutes: int = Field(
-        default=30,
-        ge=5,
-        le=1440,
-        description="Periodic orphan sweep cadence",
-    )
-    coder_sdk_max_turns: int = Field(
-        default=20,
-        ge=1,
-        le=100,
-        description="Max tool-use turns per coder query()",
-    )
-    coder_sdk_permission_mode: str = Field(
-        default="bypassPermissions",
-        description="Claude Agent SDK permission mode — production must be bypassPermissions",
-    )
-    coder_sdk_model: str = Field(
-        default="us.anthropic.claude-sonnet-4-6",
-        description="Bedrock-flavored model ID for SDK coder (Portkey rejects short aliases)",
-    )
-
-    # —— Phase 2: Orchestrator SDK prototype (Workstream B, branch-only) ——
-    orchestrator_sdk_model: str = Field(
-        default="us.anthropic.claude-sonnet-4-6",
-        description=(
-            "Bedrock-flavored model ID for the SDK orchestrator prototype. "
-            "Same model as the coder SDK by default so evaluations compare "
-            "backend architecture, not model choice."
-        ),
-    )
-    orchestrator_sdk_tool_mode: str = Field(
-        default="delegated",
-        description=(
-            "How the SDK orchestrator exposes tools: 'delegated' | 'flat'. "
-            "'delegated' (default, recommended): the orchestrator has NO "
-            "direct MCP tools — only TodoWrite + AgentDefinition sub-agents "
-            "(coder, sql_agent). All actual work happens inside "
-            "a sub-agent's isolated conversation context, which keeps the "
-            "orchestrator's token footprint low and mirrors the LangChain "
-            "orchestrator's delegation contract so the Workstream B eval is "
-            "an honest A/B. 'flat': orchestrator sees all 14 MCP tools AND "
-            "the sub-agents — Sonnet usually picks the direct tool call on "
-            "simple queries, faster but with poorer context economy on "
-            "multi-step plans. Both modes share the same underlying "
-            "MCP servers and sub-agent definitions."
-        ),
-    )
-    orchestrator_sdk_max_turns: int = Field(
-        default=30,
-        ge=1,
-        le=100,
-        description=(
-            "Max tool-use turns per orchestrator_sdk query(). Higher than the "
-            "coder default (20) because the orchestrator drives multi-worker "
-            "plans across several TodoWrite + AgentDefinition rounds."
-        ),
-    )
-
     # —— Internal observability access control ——
     internal_observability_enabled: bool = Field(
         default=True,
@@ -530,12 +425,6 @@ class Settings(BaseSettings):
         default=1000,
         ge=1,
         description="Per-caller rate limit for /internal/* endpoints",
-    )
-
-    # —— Evaluation harness (trajectory capture) ——
-    eval_consented_user_ids: str = Field(
-        default="",
-        description="Comma-separated opt-in user IDs eligible for trajectory capture",
     )
 
     # —— Memory pipeline (Phase 0.5 — pilot-gated, default OFF) ——

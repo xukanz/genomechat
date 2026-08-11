@@ -32,20 +32,6 @@ class TraceListResponse(BaseModel):
     offset: int = 0
 
 
-class AgentBackendHealth(BaseModel):
-    """One-row summary of an agent's currently-active backend."""
-
-    agent: str
-    backend: str
-
-
-class AgentBackendHealthResponse(BaseModel):
-    """Response for /internal/health/agent-backends."""
-
-    agents: list[AgentBackendHealth] = Field(default_factory=list)
-    schema_version: str = "1"
-
-
 class MemoryPreview(BaseModel):
     """Sparse memory row returned from /internal/memory.
 

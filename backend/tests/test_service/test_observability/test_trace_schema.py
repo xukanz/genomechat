@@ -14,7 +14,7 @@ from src.service.observability.trace_schema import (
 
 
 def test_node_span_attrs_defaults_active_skills_to_empty_list():
-    attrs = NodeSpanAttrs(**{"agent.name": "coder", "agent.backend": "langchain"})
+    attrs = NodeSpanAttrs(**{"agent.name": "coder"})
     assert attrs.active_skills == []
     # optional fields default to empty string
     assert attrs.agent_thread_id == ""

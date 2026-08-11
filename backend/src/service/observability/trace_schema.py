@@ -48,7 +48,6 @@ class NodeSpanAttrs(BaseModel):
     """
 
     agent_name: str = Field(alias="agent.name")
-    agent_backend: str = Field(alias="agent.backend")
     agent_thread_id: str = Field(alias="agent.thread_id", default="")
     agent_database_id: str = Field(alias="agent.database_id", default="")
     agent_research_mode: str = Field(alias="agent.research_mode", default="")

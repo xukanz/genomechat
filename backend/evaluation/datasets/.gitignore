@@ -1,3 +1,0 @@
-# Datasets are git-ignored; they contain real (pilot-consented) user queries.
-baseline.jsonl
-*.jsonl

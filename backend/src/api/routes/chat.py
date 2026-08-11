@@ -16,11 +16,6 @@ from langchain.agents.middleware.summarization import count_tokens_approximately
 from src.models.api import ChatRequest, ChatResponse, StreamEvent
 from src.models.user import User
 from src.agent import graph_builder
-from src.config.agent_backends import (
-    AgentBackend,
-    coder_backend_context,
-    orchestrator_backend_context,
-)
 from src.config.settings import settings
 from src.graph.checkpointer import create_checkpointer
 from src.service.auth.dependencies import get_optional_user
@@ -62,37 +57,6 @@ async def chat(
     Raises:
         HTTPException: If agent invocation fails
     """
-    # Phase 2 — per-request worker backend overrides for the non-streaming
-    # endpoint. Symmetric with stream_chat (see stream_chat for the rationale
-    # of using ContextVars and resetting in finally). The /sync CLI command
-    # routes through this handler, so the same pilot/A/B toggles must apply.
-    coder_token = None
-    orch_token = None
-    if request.coder_backend:
-        try:
-            coder_token = coder_backend_context.set(AgentBackend(request.coder_backend))
-            logger.info("chat: coder_backend override %s for this request", request.coder_backend)
-        except ValueError:
-            logger.warning(
-                "chat: invalid coder_backend=%r on request; falling back to settings default",
-                request.coder_backend,
-            )
-    if request.orchestrator_backend:
-        try:
-            orch_token = orchestrator_backend_context.set(
-                AgentBackend(request.orchestrator_backend)
-            )
-            logger.info(
-                "chat: orchestrator_backend override %s for this request",
-                request.orchestrator_backend,
-            )
-        except ValueError:
-            logger.warning(
-                "chat: invalid orchestrator_backend=%r on request; "
-                "falling back to settings default",
-                request.orchestrator_backend,
-            )
-
     try:
         # Extract user_id from optional authentication
         user_id = user.id if user else None
@@ -116,8 +80,6 @@ async def chat(
             research_mode=request.research_mode,
             code_language=request.code_language,
             database_id=request.database_id,
-            coder_backend_override=request.coder_backend,
-            orchestrator_backend_override=request.orchestrator_backend,
         )
         with tracer.start_as_current_span("agent.request", attributes=trace_attrs) as _request_span:
             # Create/update conversation metadata in MongoDB
@@ -196,8 +158,6 @@ async def chat(
                     turn_index=None,
                     existing_tags=existing_tags,
                     research_mode=request.research_mode,
-                    coder_backend_override=request.coder_backend,
-                    orchestrator_backend_override=request.orchestrator_backend,
                 )
                 if finalize_attrs:
                     _request_span.set_attributes(finalize_attrs)
@@ -223,11 +183,6 @@ async def chat(
     except Exception as e:
         logger.error(f"Error in chat endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
-    finally:
-        if coder_token is not None:
-            coder_backend_context.reset(coder_token)
-        if orch_token is not None:
-            orchestrator_backend_context.reset(orch_token)
 
 
 @router.post("/stream")
@@ -253,45 +208,6 @@ async def stream_chat(
         Yields:
             SSE formatted strings with token and plan data
         """
-        # Phase 2 Workstream A + B — per-request worker backend overrides.
-        # MUST live inside the generator: StreamingResponse returns before the
-        # generator runs, so a set/reset at stream_chat's top level would
-        # fire before any graph code reads the ContextVars. ContextVars are
-        # per-asyncio-task-isolated (Phase 1 Codex fix), so concurrent
-        # requests with different backend values don't interfere.
-        coder_token = None
-        orch_token = None
-        if request.coder_backend:
-            try:
-                coder_token = coder_backend_context.set(AgentBackend(request.coder_backend))
-                logger.info(
-                    "stream_chat: coder_backend override %s for this request",
-                    request.coder_backend,
-                )
-            except ValueError:
-                # Should never happen — pydantic rejects unknown values at
-                # the request boundary. Defensive guard only.
-                logger.warning(
-                    "stream_chat: invalid coder_backend=%r on request; "
-                    "falling back to settings default",
-                    request.coder_backend,
-                )
-        if request.orchestrator_backend:
-            try:
-                orch_token = orchestrator_backend_context.set(
-                    AgentBackend(request.orchestrator_backend)
-                )
-                logger.info(
-                    "stream_chat: orchestrator_backend override %s for this request",
-                    request.orchestrator_backend,
-                )
-            except ValueError:
-                logger.warning(
-                    "stream_chat: invalid orchestrator_backend=%r on request; "
-                    "falling back to settings default",
-                    request.orchestrator_backend,
-                )
-
         # Compute request-identity fields BEFORE opening the trace span so
         # they can flow into its attributes. These are the same values the
         # existing generator body uses — no behavior change.
@@ -313,8 +229,6 @@ async def stream_chat(
             research_mode=request.research_mode,
             code_language=request.code_language,
             database_id=request.database_id,
-            coder_backend_override=request.coder_backend,
-            orchestrator_backend_override=request.orchestrator_backend,
         )
         with tracer.start_as_current_span("agent.request", attributes=trace_attrs) as _request_span:
             try:
@@ -428,29 +342,6 @@ async def stream_chat(
                             "sql_agent": "SQL Agent",
                         }
 
-                        # Worker-class nodes with a feature flag — matches the set
-                        # maintained in src/config/agent_backends.py. Coordinator +
-                        # sql_agent are always LangChain today and emit no badge.
-                        _BACKEND_FLAGGED_WORKERS = {"coder", "orchestrator"}
-
-                        def _resolve_emitted_backend(node_name: str) -> str | None:
-                            """Return 'sdk' if this worker is running on SDK, else None.
-
-                            Intentionally omits the LangChain label: the frontend only
-                            draws a badge when something non-default is in play, which
-                            keeps the UI quiet for the common case. If we ever need
-                            the LangChain badge too, return ``backend.value`` unconditionally.
-                            """
-                            from src.config.agent_backends import (
-                                AgentBackend,
-                                resolve_agent_backend,
-                            )
-
-                            if node_name not in _BACKEND_FLAGGED_WORKERS:
-                                return None
-                            backend = resolve_agent_backend(node_name)
-                            return backend.value if backend == AgentBackend.SDK else None
-
                         # Filter: Only process top-level graph nodes, ignore subgraph internal nodes
                         # Top-level nodes: coordinator, orchestrator, coder, sql_agent
                         # Subgraph internal nodes have different names (e.g., process_agent_result, validate_sql)
@@ -512,14 +403,12 @@ async def stream_chat(
                                             f"Emitted Orchestrator task instruction (thinking event) - task for {agent_name}"
                                         )
 
-                            # Emit agent_start event — include agent_backend so the
-                            # frontend can surface SDK vs LangChain per worker turn.
+                            # Emit agent_start event
                             start_event = StreamEvent(
                                 type="agent_start",
                                 content=f"{agent_name} started",
                                 thread_id=conversation_id,
                                 agent_name=agent_name,
-                                agent_backend=_resolve_emitted_backend(node_name),
                             )
                             yield f"data: {start_event.model_dump_json()}\n\n"
                             logger.info(f"Emitted {agent_name} start event")
@@ -600,14 +489,12 @@ async def stream_chat(
                                                 worker_response = worker_response[start:end].strip()
                                             break
 
-                                # Emit agent_end event with complete response +
-                                # the same agent_backend value as the matching start event.
+                                # Emit agent_end event with complete response
                                 end_event = StreamEvent(
                                     type="agent_end",
                                     content=worker_response,
                                     thread_id=conversation_id,
                                     agent_name=agent_name,
-                                    agent_backend=_resolve_emitted_backend(node_name),
                                 )
                                 yield f"data: {end_event.model_dump_json()}\n\n"
                                 logger.info(
@@ -1323,8 +1210,6 @@ async def stream_chat(
                             turn_index=turn_index,
                             existing_tags=existing_tags,
                             research_mode=request.research_mode,
-                            coder_backend_override=request.coder_backend,
-                            orchestrator_backend_override=request.orchestrator_backend,
                         )
                         if finalize_attrs:
                             _request_span.set_attributes(finalize_attrs)
@@ -1349,15 +1234,6 @@ async def stream_chat(
                     thread_id=conversation_id if "conversation_id" in locals() else None,
                 )
                 yield f"data: {error_event.model_dump_json()}\n\n"
-            finally:
-                # Reset the Phase 2 per-request backend overrides even if the
-                # generator raised or was cancelled mid-stream. Leaving either
-                # set could leak into a subsequent request that happens to run
-                # on the same asyncio task (rare but real).
-                if coder_token is not None:
-                    coder_backend_context.reset(coder_token)
-                if orch_token is not None:
-                    orchestrator_backend_context.reset(orch_token)
 
     return StreamingResponse(
         event_generator(),

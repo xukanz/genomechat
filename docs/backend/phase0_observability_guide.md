@@ -7,8 +7,7 @@ Phase 0 adds a custom OpenTelemetry trace pipeline:
 - Every LangGraph node, tool call, and LLM call emits a span
 - Spans land in MongoDB `traces` collection via a custom `SpanExporter`
 - A daily APScheduler job mirrors spans to S3 (`s3://<bucket>/traces/YYYY-MM-DD/spans.jsonl`)
-- Internal API (`/internal/traces`, `/internal/health/agent-backends`) exposes scope-gated, audit-logged, rate-limited reads
-- Offline replay harness (`backend/evaluation/cli.py`) recaptures trajectories against any dataset
+- Internal API (`/internal/traces`) exposes scope-gated, audit-logged, rate-limited reads
 
 All new behavior is disabled by default. Flipping the feature flags restores pre-Phase-0 behavior instantly.
 
@@ -73,7 +72,6 @@ One MongoDB document per span. Minimum-commitment shape:
 
 **Node spans (`agent.node.{name}`):**
 - `agent.name`
-- `agent.backend` (`langchain` | `sdk`)
 - `agent.thread_id`
 - `agent.database_id`
 - `agent.research_mode`
@@ -96,7 +94,7 @@ Node span events:
 - `gen_ai.usage.output_tokens`
 - `gen_ai.usage.cost_usd` (platform-specific extension)
 
-No other attributes are written. Any Phase 1+ analysis that needs "plan completion rate," "override count," etc. derives it from the parent-child tree + events + the LangGraph MongoDB checkpoint. See [phase0_phase1_contract.md](phase0_phase1_contract.md) for the full contract.
+No other attributes are written. Any analysis that needs "plan completion rate," "override count," etc. derives it from the parent-child tree + events + the LangGraph MongoDB checkpoint. See [phase0_phase1_contract.md](phase0_phase1_contract.md) for the full contract.
 
 ## Querying traces
 
@@ -105,10 +103,6 @@ No other attributes are written. Any Phase 1+ analysis that needs "plan completi
 Every call must supply a JWT with the `traces:read:own` scope (granted by default to every authenticated user).
 
 ```bash
-# Health of agent backends
-curl -s "http://localhost:8000/internal/health/agent-backends" \
-  -H "Authorization: Bearer $JWT" | jq .
-
 # Your own spans (non-admins restricted to their own tenant_id)
 curl -s "http://localhost:8000/internal/traces?limit=50" \
   -H "Authorization: Bearer $JWT" | jq '.spans | length'
@@ -242,7 +236,6 @@ S3 archives (if enabled) are retained independently of MongoDB state.
 ## Common pitfalls
 
 - **Hanging pytest integration tests** — the `internal_traces` fixtures rely on mongomock; production mongomock doesn't implement TTL indexes (we handle the warning gracefully) or `$regex` on dotted attribute keys (why we store `thread_id` / `tenant_id` as top-level fields).
-- **Span leakage in eval harness** — `backend/evaluation/harness.py::replay` swaps the decorators' `tracer` attribute locally and restores it in `finally`. Any direct access to `opentelemetry.trace.get_tracer(...)` outside that path uses the global (production) tracer.
 - **Decorator order** — always `@trace_tool` ABOVE `@tool` / `@trace_node` ABOVE the node function. Python applies decorators bottom-up so `@tool` produces the `StructuredTool` first, which `@trace_tool` then instruments.
 - **TTL index on fresh MongoDB** — the exporter creates it idempotently on init. If you see no trace expiry, verify the index exists (`db.traces.getIndexes()`) — a permission issue will surface in startup logs.
 - **Cost comes out as $0** — the model name wasn't in the canonical table. Add it to `observability/cost.py::_PRICE_TABLE_USD_PER_MTOK` + `_MODEL_ALIASES`.
