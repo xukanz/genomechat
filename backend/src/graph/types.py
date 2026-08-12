@@ -45,6 +45,8 @@ class OrchestratorResponse(BaseModel):
     - "coder": For Python code execution, S3 operations (list/read/write files),
                mathematical calculations, data analysis, visualizations
     - "sql_agent": For SQL queries, database operations, structured data queries
+    - "researcher": For scientific literature search, paper retrieval by DOI,
+                    citation-graph traversal, and research synthesis
     - "__end__": When the task is complete, a final comprehensive response has been provided,
                  or no worker agent is needed (simple greeting/clarification).
 
@@ -59,12 +61,17 @@ class OrchestratorResponse(BaseModel):
                      Include ALL todos with updated status values (completed/in_progress/pending).
     """
 
-    next: Union[Literal["coder"], Literal["sql_agent"], Literal["__end__"]] = Field(
+    next: Union[
+        Literal["coder"], Literal["sql_agent"], Literal["researcher"], Literal["__end__"]
+    ] = Field(
         ...,
         description=(
             "The agent to route to, or '__end__' to complete the workflow. "
             "Use 'coder' for Python code execution, S3 operations, mathematical calculations, data analysis, or visualizations. "
             "Use 'sql_agent' for SQL queries, database operations, or structured data queries. "
+            "Use 'researcher' for scientific literature search, looking up papers by DOI or PubMed ID, "
+            "finding what cited a paper, and research synthesis. Do NOT ask the coder to call literature "
+            "APIs over HTTP — the researcher has purpose-built tools for this. "
             "Use '__end__' when the task is complete, a final comprehensive response has been provided, or no worker agent is needed."
         ),
     )
