@@ -9,8 +9,8 @@ All three registered profiles are built from public genomics sources:
              ``scripts/build_genomics_databases.py``.
   gwas     — EMBL-EBI GWAS Catalog, CC BY 4.0. Built locally into Parquet
              and queried through DuckDB.
-  ensembl  — Ensembl public MySQL mirror (ensembldb.ensembl.org), read-only
-             anonymous access. No local data; queried live.
+  ensembl  — EMBL-EBI Ensembl GRCh38 gene annotation. Built locally into
+             Parquet from the release GTF and queried through DuckDB.
 """
 
 import logging
@@ -244,49 +244,26 @@ DATABASE_PROFILES: dict[DatabaseProfile, DatabaseProfileConfig] = {
     ),
     DatabaseProfile.ENSEMBL: DatabaseProfileConfig(
         name="ensembl",
-        display_name="Ensembl (public MySQL)",
-        database_type="mysql",
-        # Resolved at connect time from DB_REGISTRY_ENSEMBL_* settings; the
-        # database name carries the Ensembl release and so is overridable.
-        data_path="ensembldb.ensembl.org:3306/homo_sapiens_core_115_38",
+        display_name="Ensembl GRCh38",
+        database_type="duckdb",
+        data_path="databases/ensembl",
         schema_path="databases/ensembl/schema_description.yaml",
         context_file="ensembl_context.md",
-        sql_dialect="mysql",
+        # DuckDB speaks PostgreSQL syntax.
+        sql_dialect="postgresql",
         supports_s3=False,
-        parquet_glob_pattern=None,
+        parquet_glob_pattern="*.parquet",
         hive_partitioning=False,
-        # Anonymous read-only access — no user credentials needed.
-        # The Ensembl core schema has ~75 tables. Exposing all of them floods
-        # the SQL agent's context and invites joins across tables that need
-        # deep schema knowledge to get right. This whitelist covers gene /
-        # transcript / protein structure and cross-references, which is what
-        # natural-language questions actually reach for.
-        allowed_tables=[
-            "gene",
-            "transcript",
-            "translation",
-            "exon",
-            "exon_transcript",
-            "seq_region",
-            "coord_system",
-            "xref",
-            "object_xref",
-            "external_db",
-            "external_synonym",
-            "analysis",
-            "assembly",
-            "karyotype",
-            "meta",
-        ],
+        # No allowed_tables: unlike the old MySQL core schema's ~75 tables,
+        # this dataset is four tables we chose, so there is nothing to hide.
         description=(
-            "Ensembl human core database, queried live over the public read-only "
-            "MySQL mirror at ensembldb.ensembl.org (anonymous login, no password). "
-            "Provides the reference gene annotation: genes, transcripts, exons, "
-            "translations, genomic coordinates via seq_region, and cross-references "
-            "to external identifiers (HGNC, RefSeq, UniProt) through the xref tables. "
-            "No data is stored locally. Queries cross the public internet and are "
-            "slower than the local profiles, so prefer targeted lookups over full "
-            "table scans."
+            "Ensembl GRCh38 release 116 gene annotation, built locally into "
+            "Parquet from the public GTF and queried through DuckDB. Four "
+            "tables: genes, transcripts, exons and chromosomes, covering gene "
+            "structure, biotypes, genomic coordinates, transcript isoforms, "
+            "coding sequence lengths and canonical/MANE transcript flags. "
+            "Gene symbols are HGNC. Does not include gene description text or "
+            "RefSeq/UniProt cross-references, which the GTF does not carry."
         ),
         domain="genome annotation",
         example_questions=[
@@ -294,15 +271,16 @@ DATABASE_PROFILES: dict[DatabaseProfile, DatabaseProfileConfig] = {
                 label="Gene Biotypes",
                 text=(
                     "How many genes are annotated per biotype (protein_coding, "
-                    "lncRNA, pseudogene, etc.)? Show the top 15."
+                    "lncRNA, pseudogene, etc.)? Show the top 15 as a bar chart."
                 ),
                 complexity=QuestionComplexity.BASIC,
             ),
             ExampleQuestion(
                 label="Look Up a Gene",
                 text=(
-                    "Find the gene TP53. Show its stable ID, chromosome, coordinates, "
-                    "strand, and description."
+                    "Find the gene TP53: its Ensembl ID, chromosome, "
+                    "coordinates, strand, biotype, and its MANE Select "
+                    "transcript."
                 ),
                 complexity=QuestionComplexity.BASIC,
             ),
@@ -310,25 +288,36 @@ DATABASE_PROFILES: dict[DatabaseProfile, DatabaseProfileConfig] = {
                 label="Transcripts per Gene",
                 text=(
                     "Which 20 protein-coding genes have the most annotated "
-                    "transcripts? Show the transcript count for each."
+                    "transcripts?"
                 ),
                 complexity=QuestionComplexity.MEDIUM,
             ),
             ExampleQuestion(
                 label="Exon Structure",
                 text=(
-                    "For the canonical transcript of BRCA2, list its exons with "
-                    "coordinates and lengths, then plot the exon length distribution."
+                    "For the canonical transcript of BRCA2, list its exons in "
+                    "transcription order with coordinates and lengths, then "
+                    "plot the exon length distribution."
                 ),
                 complexity=QuestionComplexity.MEDIUM,
             ),
             ExampleQuestion(
-                label="Genes per Chromosome",
+                label="Gene Density",
                 text=(
-                    "Count protein-coding genes per chromosome and plot gene density "
-                    "against chromosome length."
+                    "Count protein-coding genes per chromosome, join to "
+                    "chromosome length, and plot genes per megabase."
                 ),
                 complexity=QuestionComplexity.MEDIUM,
+            ),
+            ExampleQuestion(
+                label="Isoform Complexity",
+                text=(
+                    "Analyse how transcript and exon complexity varies across "
+                    "gene biotypes: transcripts per gene, exons per "
+                    "transcript, and CDS length versus spliced length. "
+                    "Compare MANE Select transcripts against the rest."
+                ),
+                complexity=QuestionComplexity.ADVANCED,
             ),
         ],
     ),
@@ -407,41 +396,9 @@ class DatabaseRegistrySettings(BaseSettings):
         description="Override path for the Ensembl schema YAML",
     )
 
-    # === Ensembl public MySQL mirror ===
-    # Defaults target the EBI public server, which allows anonymous read-only
-    # access. Point these at a local Ensembl mirror to avoid the round trip.
-    ensembl_enabled: bool = Field(
-        default=False,
-        description="Enable the Ensembl profile. Off by default because it needs "
-        "outbound MySQL protocol access to ensembldb.ensembl.org:3306, which "
-        "many corporate networks block at the application layer even when the "
-        "TCP handshake succeeds. Verify with a real client before enabling: "
-        "mysql -h ensembldb.ensembl.org -u anonymous -e 'SELECT VERSION()'",
-    )
-    ensembl_host: str = Field(
-        default="ensembldb.ensembl.org",
-        description="Ensembl MySQL host",
-    )
-    ensembl_port: int = Field(
-        default=3306,
-        description="Ensembl MySQL port",
-    )
-    ensembl_username: str = Field(
-        default="anonymous",
-        description="Ensembl MySQL user (the public mirror expects 'anonymous')",
-    )
-    ensembl_password: Optional[str] = Field(
+    ensembl_data_path_override: Optional[str] = Field(
         default=None,
-        description="Ensembl MySQL password (the public mirror needs none)",
-    )
-    ensembl_database: str = Field(
-        default="homo_sapiens_core_115_38",
-        description="Ensembl core database name; carries the release number, so bump "
-        "this when the mirror advances (list them with SHOW DATABASES)",
-    )
-    ensembl_allowed_tables: Optional[str] = Field(
-        default=None,
-        description="Comma-separated table whitelist; overrides the profile default",
+        description="Override path for the Ensembl Parquet directory (e.g., /data/ensembl)",
     )
 
     model_config = {
@@ -477,20 +434,14 @@ def get_registry_settings() -> DatabaseRegistrySettings:
 
 
 def get_enabled_profiles() -> dict[DatabaseProfile, "DatabaseProfileConfig"]:
-    """Get only the database profiles that are enabled via feature flags.
+    """Every registered profile. None are feature-flagged.
 
-    Profiles without a feature flag are always enabled.
-    Ensembl requires DB_REGISTRY_ENSEMBL_ENABLED=true (the default) plus
-    outbound network access to the public MySQL mirror; set it to false in
-    air-gapped environments so the profile never shows up in the picker.
+    All three are built locally by scripts/build_genomics_databases.py, so an
+    unbuilt profile fails loudly at connect time rather than being hidden from
+    the picker. Kept as a distinct function from DATABASE_PROFILES because it
+    is the natural place to reintroduce gating if a profile ever needs it.
     """
-    settings = get_registry_settings()
-    enabled = {}
-    for profile, config in DATABASE_PROFILES.items():
-        if profile == DatabaseProfile.ENSEMBL and not settings.ensembl_enabled:
-            continue
-        enabled[profile] = config
-    return enabled
+    return dict(DATABASE_PROFILES)
 
 
 # Runtime state for session-based database switching
@@ -611,17 +562,10 @@ def _apply_path_overrides(
             profile_dict["schema_path"] = settings.gwas_schema_path_override
 
     if profile.name == "ensembl":
-        # The whole connection target is settings-driven so a local Ensembl
-        # mirror can be swapped in without touching the profile definition.
-        profile_dict["data_path"] = (
-            f"{settings.ensembl_host}:{settings.ensembl_port}/{settings.ensembl_database}"
-        )
+        if settings.ensembl_data_path_override:
+            profile_dict["data_path"] = settings.ensembl_data_path_override
         if settings.ensembl_schema_path_override:
             profile_dict["schema_path"] = settings.ensembl_schema_path_override
-        if settings.ensembl_allowed_tables:
-            profile_dict["allowed_tables"] = [
-                t.strip().lower() for t in settings.ensembl_allowed_tables.split(",")
-            ]
 
     return DatabaseProfileConfig(**profile_dict)
 

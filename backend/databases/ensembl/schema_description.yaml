@@ -1,285 +1,265 @@
 schema:
-  # Ensembl human core database, queried live over the public read-only MySQL
-  # mirror at ensembldb.ensembl.org. Only the tables listed here are exposed to
-  # the SQL agent; the full core schema has roughly 75 tables and flooding the
-  # model context with all of them degrades query quality.
+  # Ensembl GRCh38 release 116 gene annotation, parsed from the public GTF into
+  # Parquet by scripts/build_genomics_databases.py and queried through DuckDB.
   #
-  # This is a shared public server on the far side of the internet. Always
-  # bound results with LIMIT and filter on indexed columns rather than scanning
-  # gene/transcript/exon in full.
+  # NOTE for maintainers: only `description` fields reach the agent.
+  # `dialect_notes` and any `notes:` keys are parsed and then discarded by
+  # DatabaseManager.load_schema_description, so guidance that matters for query
+  # correctness must live in a table or column description.
   dialect_notes: >
-    MySQL syntax. Quote identifiers with backticks. Use LIMIT n. Coordinates
-    are 1-based inclusive and seq_region_strand is 1 or -1, not +/-.
+    PostgreSQL syntax (DuckDB). Column names are plain lower_snake_case and
+    need no quoting. Columns are properly typed, so no TRY_CAST is needed.
   tables:
-    gene:
+    genes:
       description: >
-        One row per annotated gene. Genomic position is stored against a
-        numeric seq_region_id, so a join to seq_region is required to get a
-        chromosome name.
+        One row per annotated gene, roughly 78,000 rows. `gene_id` is unique.
+        IMPORTANT: `gene_name` is NULL for a large fraction of genes — novel
+        lncRNAs and pseudogenes carry no HGNC symbol — so filter
+        `gene_name IS NOT NULL` before grouping or joining by symbol, and never
+        assume a gene has one. This table includes genes on unplaced scaffolds
+        and alt haplotypes as well as real chromosomes; add
+        `WHERE is_primary_chromosome` for anything reported per chromosome.
+        `transcript_count`, `coding_transcript_count`, `canonical_transcript_id`
+        and `mane_select_transcript_id` are precomputed at build time — read
+        them directly rather than re-deriving them by joining `transcripts`.
+        NOT AVAILABLE in this dataset: gene description text, and RefSeq /
+        UniProt / EntrezGene cross-references. The GTF carries neither.
+        `gene_name` is the HGNC symbol and `transcripts.protein_id` is the
+        Ensembl protein ID, which together cover most identifier needs.
       columns:
         - name: gene_id
-          type: integer
-          description: >
-            Internal primary key. Changes between Ensembl releases — join on
-            it, but report stable_id.
-          constraints: primary key
-        - name: stable_id
           type: varchar
           description: >
-            Public stable identifier, e.g. ENSG00000141510. Stored without the
-            ".N" version suffix that users often paste; strip the suffix before
-            matching.
-        - name: biotype
+            Ensembl stable gene ID such as ENSG00000141510, with NO version
+            suffix. Users often paste a versioned ID like ENSG00000141510.18 —
+            strip it first, e.g. split_part(input, '.', 1). The version is in
+            `gene_version`.
+          constraints: unique
+        - name: gene_version
+          type: integer
+          description: Ensembl version number for this gene's annotation.
+        - name: gene_name
           type: varchar
           description: >
-            e.g. protein_coding, lncRNA, processed_pseudogene, miRNA. Indexed
-            and cheap to group by.
-        - name: seq_region_id
+            HGNC symbol, e.g. TP53. NULL for a large fraction of genes. This is
+            the column to match when a user names a gene.
+        - name: gene_biotype
+          type: varchar
+          description: >
+            Functional class, e.g. protein_coding, lncRNA, processed_pseudogene,
+            miRNA, snRNA. Use this rather than inferring type from the name.
+        - name: gene_source
+          type: varchar
+          description: Annotation source — havana, ensembl, ensembl_havana, mirbase.
+        - name: chromosome
+          type: varchar
+          description: >
+            Chromosome or scaffold name: '1'-'22', 'X', 'Y', 'MT', or a scaffold
+            accession such as KI270728.1. Stored as text, so ORDER BY is
+            lexicographic ('10' sorts before '2'); cast or use a CASE expression
+            for numeric order. Named `chromosome` to match the ClinVar profile.
+        - name: start
           type: integer
-          description: Foreign key to seq_region. Not a chromosome name.
-        - name: seq_region_start
+          description: Start coordinate, 1-based and inclusive.
+        - name: end
+          type: integer
+          description: >
+            End coordinate, 1-based and inclusive, so length is end - start + 1.
+            Same convention as ClinVar, unlike BED.
+        - name: strand
+          type: varchar
+          description: >
+            '+' or '-' — the GTF representation. NOT the 1 / -1 encoding used by
+            the Ensembl core MySQL schema.
+        - name: genomic_length
+          type: integer
+          description: end - start + 1. Spans the whole locus, introns included.
+        - name: transcript_count
+          type: integer
+          description: Number of annotated transcripts. Precomputed; 0 is possible.
+        - name: coding_transcript_count
+          type: integer
+          description: Transcripts with biotype protein_coding. Precomputed.
+        - name: canonical_transcript_id
+          type: varchar
+          description: >
+            The single representative transcript Ensembl designates for this
+            gene. NULL if none is tagged. Use it when a question implies "the"
+            transcript of a gene.
+        - name: mane_select_transcript_id
+          type: varchar
+          description: >
+            MANE Select transcript — the one Ensembl and RefSeq agree on, and
+            the preferred reference for clinical reporting. NULL for most
+            non-coding genes.
+        - name: is_primary_chromosome
+          type: boolean
+          description: >
+            True for the 22 autosomes, X, Y and MT; false for scaffolds, patches
+            and alt haplotypes. Filter on this for per-chromosome summaries,
+            otherwise scaffolds inflate the results.
+
+    transcripts:
+      description: >
+        One row per transcript, roughly 280,000 rows. `gene_name` is
+        denormalised here so gene-symbol questions need no join to `genes`.
+        CRITICAL: `spliced_length` (sum of exon lengths, i.e. the mature RNA)
+        and `genomic_length` (end - start + 1, introns included) are different
+        numbers and are not interchangeable — "transcript length" almost always
+        means `spliced_length`. `cds_length` is precomputed from the GTF CDS
+        records and is NULL for non-coding transcripts, so coding status is
+        `cds_length IS NOT NULL`. There are NO separate CDS, UTR, start_codon or
+        stop_codon tables: those GTF records were folded into the columns here
+        at build time, because per-exon coding rows make length calculations
+        easy to get silently wrong.
+      columns:
+        - name: transcript_id
+          type: varchar
+          description: Ensembl stable transcript ID (ENST...), no version suffix.
+          constraints: unique
+        - name: gene_id
+          type: varchar
+          description: Parent gene. Join key to `genes.gene_id`.
+        - name: gene_name
+          type: varchar
+          description: >
+            HGNC symbol of the parent gene, denormalised. NULL whenever the gene
+            has no symbol.
+        - name: transcript_name
+          type: varchar
+          description: Human-readable transcript name, e.g. TP53-201.
+        - name: transcript_biotype
+          type: varchar
+          description: >
+            protein_coding, retained_intron, nonsense_mediated_decay, lncRNA and
+            others. A protein_coding gene has non-coding transcripts too.
+        - name: chromosome
+          type: varchar
+          description: Chromosome or scaffold name. See genes.chromosome.
+        - name: start
           type: integer
           description: Start coordinate, 1-based inclusive.
-        - name: seq_region_end
+        - name: end
           type: integer
           description: End coordinate, 1-based inclusive.
-        - name: seq_region_strand
-          type: integer
-          description: 1 for the forward strand, -1 for reverse.
-        - name: description
-          type: text
-          description: Free-text gene description with its source in brackets.
-        - name: canonical_transcript_id
-          type: integer
-          description: Foreign key to transcript — the representative transcript.
-        - name: source
+        - name: strand
           type: varchar
-          description: Annotation source, e.g. ensembl_havana.
-
-    transcript:
-      description: One row per transcript. Joins to gene via gene_id.
-      columns:
-        - name: transcript_id
+          description: "'+' or '-'."
+        - name: genomic_length
           type: integer
-          constraints: primary key
+          description: >
+            end - start + 1. Includes introns. This is the span on the genome,
+            NOT the length of the RNA.
+        - name: exon_count
+          type: integer
+          description: Number of exons. Precomputed from the exons table.
+        - name: spliced_length
+          type: integer
+          description: >
+            Sum of exon lengths — the mature RNA length. This is what
+            "transcript length" normally means. Precomputed.
+        - name: cds_length
+          type: integer
+          description: >
+            Total coding sequence length, summed across CDS records. NULL for
+            non-coding transcripts. Divide by 3 for the approximate protein
+            length in amino acids.
+        - name: cds_start
+          type: integer
+          description: Lowest CDS coordinate. NULL for non-coding transcripts.
+        - name: cds_end
+          type: integer
+          description: Highest CDS coordinate. NULL for non-coding transcripts.
+        - name: protein_id
+          type: varchar
+          description: Ensembl protein ID (ENSP...). NULL for non-coding transcripts.
+        - name: transcript_support_level
+          type: varchar
+          description: >
+            '1' (best evidence) through '5', or 'NA'. Stored as text. NULL when
+            the source did not report one.
+        - name: ccds_id
+          type: varchar
+          description: Consensus CDS identifier, when the transcript has one.
+        - name: is_canonical
+          type: boolean
+          description: >
+            True for the one Ensembl-canonical transcript per gene. Use this to
+            avoid double-counting when a question is about genes but the data is
+            per transcript.
+        - name: is_mane_select
+          type: boolean
+          description: MANE Select — the Ensembl/RefSeq agreed clinical reference.
+        - name: is_gencode_basic
+          type: boolean
+          description: Part of the GENCODE Basic subset of representative transcripts.
+        - name: transcript_source
+          type: varchar
+          description: Annotation source — havana, ensembl, ensembl_havana.
+        - name: is_primary_chromosome
+          type: boolean
+          description: False for scaffolds, patches and alt haplotypes.
+
+    exons:
+      description: >
+        One row per exon OCCURRENCE IN A TRANSCRIPT, roughly 1.7 million rows.
+        An exon shared by several transcripts appears once per transcript, so
+        COUNT(*) counts occurrences while COUNT(DISTINCT exon_id) counts
+        distinct exons — choose deliberately. CRITICAL: `exon_number` is
+        transcription order, not coordinate order. On the minus strand exon 1
+        has the HIGHEST coordinates. Use ORDER BY exon_number for biological
+        order and ORDER BY start for genomic order; they are reversed for
+        roughly half of all genes.
+      columns:
+        - name: exon_id
+          type: varchar
+          description: >
+            Ensembl stable exon ID (ENSE...). Not unique in this table — it
+            repeats once per transcript that uses the exon.
+        - name: transcript_id
+          type: varchar
+          description: Transcript this occurrence belongs to. Join to transcripts.
         - name: gene_id
+          type: varchar
+          description: Parent gene, denormalised to avoid a join for gene-level counts.
+        - name: exon_number
           type: integer
-          description: Foreign key to gene.
-        - name: stable_id
-          type: varchar
-          description: Public identifier, e.g. ENST00000380152.
-        - name: biotype
-          type: varchar
           description: >
-            Transcript biotype; differs from the parent gene's, e.g.
-            retained_intron on a protein_coding gene.
-        - name: seq_region_id
-          type: integer
-        - name: seq_region_start
-          type: integer
-        - name: seq_region_end
-          type: integer
-        - name: seq_region_strand
-          type: integer
-
-    translation:
-      description: Protein products of coding transcripts.
-      columns:
-        - name: translation_id
-          type: integer
-          constraints: primary key
-        - name: transcript_id
-          type: integer
-          description: Foreign key to transcript.
-        - name: stable_id
+            Position within the transcript in transcription order, starting at 1.
+            On the minus strand this counts DOWN the chromosome.
+        - name: chromosome
           type: varchar
-          description: Public identifier, e.g. ENSP00000269305.
-        - name: seq_start
+          description: Chromosome or scaffold name.
+        - name: start
           type: integer
-          description: Offset of the coding start within the first exon.
-        - name: seq_end
+          description: Start coordinate, 1-based inclusive.
+        - name: end
           type: integer
-          description: Offset of the coding end within the last exon.
-
-    exon:
-      description: >
-        Exon coordinates. Multi-million rows — never scan without a WHERE
-        clause. Exons are shared across transcripts, so the link to a
-        transcript lives in exon_transcript.
-      columns:
-        - name: exon_id
-          type: integer
-          constraints: primary key
-        - name: seq_region_id
-          type: integer
-        - name: seq_region_start
-          type: integer
-        - name: seq_region_end
-          type: integer
-        - name: seq_region_strand
-          type: integer
-        - name: phase
-          type: integer
-          description: Reading-frame phase at the exon start; -1 for non-coding.
-        - name: end_phase
-          type: integer
-          description: Reading-frame phase at the exon end.
-
-    exon_transcript:
-      description: >
-        Link table joining exons to transcripts. Required for any per-transcript
-        exon structure query.
-      columns:
-        - name: exon_id
-          type: integer
-        - name: transcript_id
-          type: integer
-        - name: rank
-          type: integer
-          description: Exon order within the transcript, starting at 1.
-
-    seq_region:
-      description: >
-        Chromosomes, scaffolds, and patches. Join here to turn a
-        seq_region_id into a chromosome name.
-      columns:
-        - name: seq_region_id
-          type: integer
-          constraints: primary key
-        - name: name
-          type: varchar
-          description: >
-            e.g. "1", "X", "MT". Also holds alt scaffolds and patches, so
-            restrict to coord_system.name = 'chromosome' plus a name pattern
-            to stay on the primary assembly.
-        - name: coord_system_id
-          type: integer
-          description: Foreign key to coord_system.
+          description: End coordinate, 1-based inclusive.
         - name: length
           type: integer
-          description: Length of the region in base pairs.
-
-    coord_system:
-      description: Assembly coordinate systems.
-      columns:
-        - name: coord_system_id
-          type: integer
-          constraints: primary key
-        - name: name
+          description: end - start + 1.
+        - name: strand
           type: varchar
-          description: e.g. chromosome, scaffold, contig.
-        - name: version
-          type: varchar
-          description: Assembly version, e.g. GRCh38.
-        - name: rank
-          type: integer
+          description: "'+' or '-'."
 
-    xref:
+    chromosomes:
       description: >
-        External identifiers. Part of a three-table pattern — an xref is tied
-        to an Ensembl object through object_xref, and its source is named in
-        external_db.
+        Sequence lengths for the GRCh38 assembly, taken from the Ensembl FASTA
+        index, restricted to sequences that actually carry annotated genes. Join
+        to genes.chromosome for density calculations — raw gene counts are
+        misleading because chromosome 1 is roughly five times the length of
+        chromosome 21. This is the only source of sequence length; the GTF does
+        not carry it.
       columns:
-        - name: xref_id
-          type: integer
-          constraints: primary key
-        - name: external_db_id
-          type: integer
-          description: Foreign key to external_db.
-        - name: dbprimary_acc
+        - name: chromosome
           type: varchar
-          description: Accession in the external database.
-        - name: display_label
-          type: varchar
+          description: Sequence name. Join key to genes/transcripts/exons.chromosome.
+        - name: length
+          type: bigint
           description: >
-            Human-readable label. For HGNC xrefs this is the gene symbol, which
-            makes it the usual entry point for symbol lookups.
-        - name: description
-          type: text
-
-    object_xref:
-      description: Links an xref to a gene, transcript, or translation.
-      columns:
-        - name: object_xref_id
-          type: integer
-          constraints: primary key
-        - name: xref_id
-          type: integer
-        - name: ensembl_id
-          type: integer
-          description: >
-            The internal id of the target object. Which table it refers to is
-            given by ensembl_object_type.
-        - name: ensembl_object_type
-          type: varchar
-          description: One of Gene, Transcript, Translation.
-
-    external_db:
-      description: Names the source of an xref.
-      columns:
-        - name: external_db_id
-          type: integer
-          constraints: primary key
-        - name: db_name
-          type: varchar
-          description: >
-            e.g. HGNC, EntrezGene, RefSeq_mRNA, Uniprot/SWISSPROT. Filter on
-            this to pick the identifier system you want.
-
-    external_synonym:
-      description: Alternative names for an xref, such as former gene symbols.
-      columns:
-        - name: xref_id
-          type: integer
-        - name: synonym
-          type: varchar
-
-    karyotype:
-      description: Cytogenetic bands. Small table, safe to scan.
-      columns:
-        - name: karyotype_id
-          type: integer
-          constraints: primary key
-        - name: seq_region_id
-          type: integer
-        - name: seq_region_start
-          type: integer
-        - name: seq_region_end
-          type: integer
-        - name: band
-          type: varchar
-          description: Band name, e.g. q24.3.
-        - name: stain
-          type: varchar
-          description: Giemsa stain class, e.g. gpos50, gneg, acen.
-
-    analysis:
-      description: Provenance of each annotation feature — which pipeline produced it.
-      columns:
-        - name: analysis_id
-          type: integer
-          constraints: primary key
-        - name: logic_name
-          type: varchar
-
-    assembly:
-      description: Maps assembled sequence to its component pieces. Rarely needed directly.
-      columns:
-        - name: asm_seq_region_id
-          type: integer
-        - name: cmp_seq_region_id
-          type: integer
-
-    meta:
-      description: >
-        Key-value metadata about the database itself. Tiny and cheap to query;
-        "SELECT * FROM meta WHERE meta_key LIKE 'assembly%'" confirms the
-        assembly version.
-      columns:
-        - name: meta_id
-          type: integer
-          constraints: primary key
-        - name: meta_key
-          type: varchar
-        - name: meta_value
-          type: varchar
+            Sequence length in base pairs. Divide by 1e6 for megabases when
+            computing gene density.
+        - name: is_primary_chromosome
+          type: boolean
+          description: True for the 22 autosomes, X, Y and MT.

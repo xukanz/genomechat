@@ -82,13 +82,18 @@ class DatabaseSettings(BaseSettings):
         Returns:
             DatabaseSettings configured for the profile
         """
-        # Map string type to enum
-        type_map = {
-            "sqlite": DatabaseType.SQLITE,
-            "duckdb": DatabaseType.DUCKDB,
-            "postgres": DatabaseType.POSTGRES,
-        }
-        db_type = type_map.get(profile.database_type.lower(), DatabaseType.SQLITE)
+        # Resolve straight off the enum rather than a partial lookup table.
+        # The previous map covered only three types and silently fell back to
+        # SQLITE, so a profile declaring anything else built settings for the
+        # wrong engine and failed much later, somewhere unrelated.
+        try:
+            db_type = DatabaseType(profile.database_type.lower())
+        except ValueError as exc:
+            raise ValueError(
+                f"Profile {profile.name!r} declares unsupported database_type "
+                f"{profile.database_type!r}. Valid types: "
+                f"{[t.value for t in DatabaseType]}"
+            ) from exc
 
         settings_dict = {
             "database_type": db_type,
@@ -102,25 +107,5 @@ class DatabaseSettings(BaseSettings):
             settings_dict["duckdb_data_path"] = profile.data_path
             settings_dict["parquet_glob_pattern"] = profile.parquet_glob_pattern
             settings_dict["hive_partitioning"] = profile.hive_partitioning
-        elif db_type == DatabaseType.MYSQL:
-            # Parse data_path as "host:port/database". Used by the Ensembl
-            # profile, which points at the public read-only mirror.
-            parts = profile.data_path.split("/", 1)
-            host_port = parts[0]
-            database = parts[1] if len(parts) > 1 else None
-            host, port_str = host_port.rsplit(":", 1) if ":" in host_port else (host_port, "3306")
-
-            from src.config.database_registry import get_registry_settings
-
-            registry = get_registry_settings()
-
-            settings_dict["host"] = registry.ensembl_host or host
-            settings_dict["port"] = registry.ensembl_port or int(port_str)
-            settings_dict["database_name"] = database
-
-            # The public mirror needs no auth, so an empty password is the
-            # normal case here.
-            settings_dict["username"] = registry.ensembl_username
-            settings_dict["password"] = registry.ensembl_password or ""
 
         return cls(**settings_dict)

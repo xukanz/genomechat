@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from src.config.database_registry import (
     DatabaseProfile,
-    DatabaseProfileConfig,
     DatabaseRegistrySettings,
     DATABASE_PROFILES,
     get_active_profile,
@@ -77,21 +76,16 @@ class TestDatabaseProfileConfig:
     def test_ensembl_profile(self):
         p = DATABASE_PROFILES[DatabaseProfile.ENSEMBL]
         assert p.name == "ensembl"
-        assert p.database_type == "mysql"
-        assert p.sql_dialect == "mysql"
-        # host:port/database — parsed by DatabaseSettings.from_profile
-        assert ":" in p.data_path and "/" in p.data_path
-
-    def test_ensembl_whitelists_tables(self):
-        """The Ensembl core schema is ~75 tables; only a subset is exposed."""
-        p = DATABASE_PROFILES[DatabaseProfile.ENSEMBL]
-        assert p.allowed_tables
-        assert "gene" in p.allowed_tables
-        assert "transcript" in p.allowed_tables
-        assert len(p.allowed_tables) < 30
+        assert p.database_type == "duckdb"
+        assert p.sql_dialect == "postgresql"
+        assert p.data_path == "databases/ensembl"
+        assert p.parquet_glob_pattern == "*.parquet"
+        assert p.hive_partitioning is False
+        assert p.supports_s3 is False
 
     def test_local_profiles_expose_all_tables(self):
-        for profile in (DatabaseProfile.CLINVAR, DatabaseProfile.GWAS):
+        """All three are built locally, so there is no schema to hide."""
+        for profile in DatabaseProfile:
             assert DATABASE_PROFILES[profile].allowed_tables is None
 
     def test_all_profiles_have_example_questions(self):
@@ -197,38 +191,31 @@ class TestPathOverrides:
 
 
 class TestEnsemblOverrides:
-    """Tests for the Ensembl connection settings."""
+    """Path overrides for the Ensembl Parquet dataset."""
 
-    def test_host_and_database_compose_data_path(self):
+    def test_data_path_override(self):
         with patch.dict(
             "os.environ",
             {
                 "DB_REGISTRY_ACTIVE_DATABASE": "ensembl",
-                "DB_REGISTRY_ENSEMBL_ENABLED": "true",
-                "DB_REGISTRY_ENSEMBL_HOST": "mirror.internal",
-                "DB_REGISTRY_ENSEMBL_PORT": "3307",
-                "DB_REGISTRY_ENSEMBL_DATABASE": "homo_sapiens_core_999_38",
+                "DB_REGISTRY_ENSEMBL_DATA_PATH_OVERRIDE": "/data/ensembl",
             },
             clear=True,
         ):
             get_registry_settings.cache_clear()
-            assert get_active_profile().data_path == (
-                "mirror.internal:3307/homo_sapiens_core_999_38"
-            )
+            assert get_active_profile().data_path == "/data/ensembl"
 
-    def test_allowed_tables_override(self):
+    def test_schema_path_override(self):
         with patch.dict(
             "os.environ",
             {
                 "DB_REGISTRY_ACTIVE_DATABASE": "ensembl",
-                "DB_REGISTRY_ENSEMBL_ENABLED": "true",
-                "DB_REGISTRY_ENSEMBL_ALLOWED_TABLES": "gene, Transcript ,exon",
+                "DB_REGISTRY_ENSEMBL_SCHEMA_PATH_OVERRIDE": "/data/ensembl/schema.yaml",
             },
             clear=True,
         ):
             get_registry_settings.cache_clear()
-            # Whitespace trimmed and lowercased.
-            assert get_active_profile().allowed_tables == ["gene", "transcript", "exon"]
+            assert get_active_profile().schema_path == "/data/ensembl/schema.yaml"
 
 
 class TestSchemaAndContextPaths:
@@ -248,23 +235,78 @@ class TestSchemaAndContextPaths:
 
 
 class TestGetEnabledProfiles:
-    """Tests for the Ensembl feature flag."""
+    """No profile is feature-flagged — all three are built locally."""
 
-    def test_ensembl_disabled_by_default(self):
-        """Off by default: many networks block outbound MySQL protocol."""
+    def test_every_profile_is_enabled(self):
         with patch.dict("os.environ", {}, clear=True):
             get_registry_settings.cache_clear()
-            enabled = get_enabled_profiles()
-            assert DatabaseProfile.ENSEMBL not in enabled
-            assert DatabaseProfile.CLINVAR in enabled
-            assert DatabaseProfile.GWAS in enabled
+            assert set(get_enabled_profiles()) == set(DATABASE_PROFILES)
 
-    def test_ensembl_enabled_when_flag_true(self):
-        with patch.dict(
-            "os.environ", {"DB_REGISTRY_ENSEMBL_ENABLED": "true"}, clear=True
-        ):
+    def test_ensembl_is_offered_without_a_flag(self):
+        """It used to be hidden behind DB_REGISTRY_ENSEMBL_ENABLED because it
+        needed outbound MySQL. It is a local Parquet build now."""
+        with patch.dict("os.environ", {}, clear=True):
             get_registry_settings.cache_clear()
             assert DatabaseProfile.ENSEMBL in get_enabled_profiles()
 
-    def test_enabled_profiles_subset_of_all_profiles(self):
-        assert set(get_enabled_profiles()).issubset(set(DATABASE_PROFILES))
+    def test_no_feature_flags_remain(self):
+        """Pins the decision so a flag cannot creep back for one profile."""
+        flags = [f for f in DatabaseRegistrySettings.model_fields if f.endswith("_enabled")]
+        assert not flags, f"unexpected feature flags: {flags}"
+
+    def test_enabled_matches_list_available(self):
+        """The two enumeration paths must not drift apart."""
+        with patch.dict("os.environ", {}, clear=True):
+            get_registry_settings.cache_clear()
+            assert {p["name"] for p in list_available_profiles()} == {
+                c.name for c in get_enabled_profiles().values()
+            }
+
+
+class TestSchemaDescriptionsAreUsable:
+    """Every profile's schema YAML must survive load_schema_description().
+
+    That loader indexes `table_info["columns"]` without a guard, so a table
+    missing the key raises KeyError — and only at agent runtime, when the model
+    calls get_database_schema. Cheap to catch here.
+    """
+
+    @pytest.mark.parametrize("profile", list(DatabaseProfile))
+    def test_schema_yaml_loads_and_is_well_formed(self, profile):
+        import yaml
+
+        from src.config.paths import resolve_path
+
+        config = DATABASE_PROFILES[profile]
+        path = resolve_path(config.schema_path, must_exist=True)
+        data = yaml.safe_load(path.read_text())
+
+        tables = data["schema"]["tables"]
+        assert tables, f"{profile.value} declares no tables"
+
+        for table_name, table_info in tables.items():
+            assert "columns" in table_info, (
+                f"{profile.value}.{table_name} has no 'columns' key — "
+                "load_schema_description would raise KeyError"
+            )
+            assert table_info["columns"], f"{profile.value}.{table_name} has no columns"
+            for column in table_info["columns"]:
+                assert "name" in column and "type" in column, (
+                    f"{profile.value}.{table_name} has a column missing name/type"
+                )
+
+    @pytest.mark.parametrize("profile", list(DatabaseProfile))
+    def test_whitelisted_tables_exist_in_the_schema(self, profile):
+        """A whitelist naming a table the YAML lacks silently hides it."""
+        import yaml
+
+        from src.config.paths import resolve_path
+
+        config = DATABASE_PROFILES[profile]
+        if not config.allowed_tables:
+            pytest.skip(f"{profile.value} exposes all tables")
+
+        data = yaml.safe_load(resolve_path(config.schema_path, must_exist=True).read_text())
+        documented = {t.lower() for t in data["schema"]["tables"]}
+        missing = {t.lower() for t in config.allowed_tables} - documented
+        assert not missing, f"{profile.value} whitelists undocumented tables: {missing}"
