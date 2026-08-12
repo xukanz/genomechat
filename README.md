@@ -59,13 +59,14 @@ The `ensembl` profile needs no preparation — it queries `ensembldb.ensembl.org
 
 ### Multi-Agent System
 
-Built with LangGraph:
+Built with LangGraph. Four nodes make up the top-level graph: every request enters at the coordinator, and the worker nodes always hand control back to the orchestrator.
 
 - **Coordinator** — routes incoming queries; small talk gets answered directly, real work is handed off
 - **Orchestrator** — plans and coordinates multi-step tasks, then synthesises the final answer
 - **Coder** — generates and executes Python or R in a sandboxed service
 - **SQL Agent** — schema-aware SQL generation with a validation and safety pipeline
-- **Summarizer** — compresses long conversations when the context window fills
+
+The **Summarizer** is not a node but a `SummarizationMiddleware` on the orchestrator, running on its own (cheaper) model to compress the history when the context window fills.
 
 ### Observability
 
@@ -98,15 +99,65 @@ Long conversations are summarised automatically at 70% of the model's input wind
 #### Databases (`/databases`)
 - `GET /databases` — list available profiles
 - `GET /databases/active` — currently active profile
+- `GET /databases/{database_id}` — profile detail (type, SQL dialect, domain, example questions)
 - `POST /databases/{database_id}/connect` — switch active profile
+
+#### Conversations (`/conversations`)
+- `GET /conversations` — list the caller's conversations (optionally filtered by project)
+- `GET /conversations/{conversation_id}` — conversation metadata
+- `GET /conversations/{conversation_id}/history` — replay the stored message history
+- `PATCH /conversations/{conversation_id}` — rename
+- `DELETE /conversations/{conversation_id}` — delete
+
+#### Projects (`/projects`)
+Projects group conversations, own reusable code snippets, and can be shared with other users.
+
+- `GET /projects` — list owned and shared-with-me projects
+- `POST /projects` — create
+- `GET|PATCH|DELETE /projects/{project_id}` — read, update, delete (the default project cannot be deleted)
+- `POST /projects/{project_id}/conversations/{conversation_id}/move` — move a conversation between projects
+- `GET|POST /projects/{project_id}/shares` — list or grant shared access
+- `DELETE /projects/{project_id}/shares/{user_id}` — revoke shared access
+- `GET|POST /projects/{project_id}/snippets` — list or create snippets injected into the coder prompt
+- `PUT|DELETE /projects/{project_id}/snippets/{snippet_id}` — update or delete a snippet
+- `PATCH /projects/{project_id}/snippets/{snippet_id}/toggle` — enable/disable without deleting
+
+#### Artifacts (`/artifacts`)
+Files produced by the coder and SQL agents, tracked in MongoDB and stored in S3.
+
+- `GET /artifacts` — list generated files (filter by thread, project, file type, or content type; paginated)
+- `GET /artifacts/{file_id}/download` — presigned download URL
+- `POST /artifacts/batch-download-urls` — presigned URLs for many files at once
+
+#### Reports (`/reports`)
+- `GET /reports` — list saved reports
+- `POST /reports` — save an assistant answer as a report
+- `GET /reports/check?conversation_id=&message_index=` — whether a given message has already been saved
+- `GET /reports/conversation/{conversation_id}` — reports saved from one conversation
+- `GET|PATCH|DELETE /reports/{report_id}` — read, update, delete
+
+#### Feedback (`/feedback`)
+- `POST /feedback` — create or update thumbs up/down on a message
+- `GET /feedback/message?conversation_id=&message_index=` — feedback for a single message
+- `GET /feedback/conversation/{conversation_id}` — all feedback in a conversation
+- `DELETE /feedback/{feedback_id}` — delete by id
+- `DELETE /feedback/message/{conversation_id}/{message_index}` — delete by message position
+
+#### Users (`/users`)
+- `GET /users/search` — look up users by email or name (used by the project share dialog)
+- `PATCH /users/me` — update the caller's profile
 
 #### Internal (`/internal`, gated by `INTERNAL_OBSERVABILITY_ENABLED`)
 - `GET /internal/traces` — query captured spans
-- `GET /internal/health/agent-backends` — which backend each agent resolves to
+- `GET /internal/traces/raw` — raw transcript access; reserved for a later phase, currently returns `501`
 - `GET /internal/memory` — inspect extracted memories
+- `POST /internal/memory/consolidate` — trigger a consolidation pass on demand
 
 #### Health
 - `GET /health` — health check
+- `GET /health/detailed` — MongoDB and Python-sandbox connectivity plus a redacted config summary; reports `degraded` if either is unreachable
+
+Interactive docs are served at `/docs` (Swagger UI) and `/redoc`.
 
 ### Research Modes
 
@@ -120,6 +171,12 @@ Long conversations are summarised automatically at 70% of the model's input wind
 **Files** — `list_files_by_thread`, `list_files_by_type`, `read_file_from_s3`, `list_s3_files`
 
 **Code execution** — `execute_code` (Python), `execute_r_code` (R)
+
+**Planning** — `manage_plan`, the orchestrator's todo list; its updates are streamed to the UI as plan events
+
+**SQL pipeline** — `execute_sql_pipeline`, used by the agentic SQL graph to generate, validate, and run a query in one call
+
+Not every tool goes to every agent. The coder gets the file and code-execution tools, the orchestrator gets `manage_plan` only, and the SQL agent gets the schema, sampling, and pipeline tools.
 
 ## 🛠️ Setup & Development
 
