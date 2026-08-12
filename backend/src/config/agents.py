@@ -10,12 +10,12 @@ from src.config.llm import ProviderType
 
 # Define agent-LLM mapping: (provider, model)
 AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
-    "coordinator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
-    "orchestrator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-opus-4-6-v1"),
-    "coder": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
-    "sql_agent": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
-    "researcher": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
-    "summarizer": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    "coordinator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "orchestrator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-opus-5"),
+    "coder": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "sql_agent": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "researcher": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "summarizer": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
 }
 # AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
 #     "coordinator": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
