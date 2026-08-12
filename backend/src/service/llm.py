@@ -50,8 +50,15 @@ def _inject_callbacks(llm_kwargs: dict) -> dict:
 class LLMService:
     """Centralized LLM service with factory methods."""
 
-    # Models that don't support temperature parameter
+    # Models that don't support the temperature parameter. Matching is a
+    # substring test against the de-hyphenated model id, so "claude-sonnet-5"
+    # also covers "us.anthropic.claude-sonnet-5" and any point releases.
+    #
+    # Sending temperature to one of these is a hard 400 from the provider
+    # ("`temperature` is deprecated for this model"), not a silent ignore, so a
+    # missing entry takes every agent using that model offline.
     _NO_TEMPERATURE_MODELS = {
+        # OpenAI reasoning models
         "o1",
         "o1-mini",
         "o1-preview",
@@ -61,6 +68,10 @@ class LLMService:
         "o4",
         "o4-mini",
         "o4-preview",
+        # Claude 5 family — rejected via Bedrock
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-fable-5",
     }
 
     @classmethod
@@ -81,14 +92,26 @@ class LLMService:
     def get_structured_output_method(provider: str) -> str:
         """Get the appropriate structured output method for a provider.
 
+        Anthropic models use ``function_calling`` rather than ``json_mode``.
+        ``json_mode`` is not schema-enforced — it asks for JSON in the prompt and
+        parses whatever comes back — so a model that opens with a sentence of
+        explanation raises ``OutputParserException`` instead of routing. That
+        failed intermittently on Claude 5, which is more inclined to narrate.
+        Tool calling is schema-enforced at the provider, so prose cannot leak
+        through.
+
+        Callers must use ``streaming=False``; Bedrock rejects tool use with
+        streaming enabled.
+
         Args:
             provider: Provider type (from ProviderType enum)
 
         Returns:
-            Method string: 'json_mode' for Bedrock/Anthropic, 'json_schema' for OpenAI/GCP
+            Method string: 'function_calling' for Bedrock/Anthropic,
+            'json_schema' for OpenAI/GCP
         """
         if provider in (ProviderType.PORTKEY_BEDROCK, ProviderType.ANTHROPIC):
-            return "json_mode"
+            return "function_calling"
         elif provider in (
             ProviderType.PORTKEY_AZURE,
             ProviderType.PORTKEY_GCP,

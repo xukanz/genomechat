@@ -42,7 +42,7 @@ def _run_coordinator(messages: list[BaseMessage], decision: CoordinatorResponse)
         llm = MagicMock()
         llm.with_structured_output.return_value = structured
         mock_llm_service.get_llm_by_agent.return_value = llm
-        mock_llm_service.get_structured_output_method_for_agent.return_value = "json_mode"
+        mock_llm_service.get_structured_output_method_for_agent.return_value = "function_calling"
 
         from src.graph.nodes import coordinator_node
 

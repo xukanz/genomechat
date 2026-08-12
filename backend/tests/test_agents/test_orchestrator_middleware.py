@@ -12,7 +12,7 @@ class TestOrchestratorMiddleware:
         """Helper to create orchestrator agent with mocked LLM services."""
         with patch("src.agents.orchestrator.LLMService") as mock_llm_service:
             mock_llm_service.get_llm_by_agent.return_value = MagicMock()
-            mock_llm_service.get_structured_output_method_for_agent.return_value = "json_mode"
+            mock_llm_service.get_structured_output_method_for_agent.return_value = "function_calling"
             with patch("src.agents.orchestrator.create_agent") as mock_create:
                 mock_create.return_value = MagicMock()
                 with patch(
