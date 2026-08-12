@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 from src.config.database import DatabaseSettings, DatabaseType
 from src.service.database.connections.duckdb_connection import DuckDBConnection
@@ -34,14 +34,10 @@ class TestDuckDBConnection:
         with pytest.raises(ValueError, match="DuckDB data path not specified"):
             conn._resolve_data_path()
 
-    @patch("src.service.database.connections.duckdb_connection.Path")
-    def test_resolve_data_path_absolute(self, mock_path_class):
-        """Test resolving absolute path."""
-        # Setup mock
-        mock_path = MagicMock()
-        mock_path.is_absolute.return_value = True
-        mock_path.exists.return_value = True
-        mock_path_class.return_value = mock_path
+    @patch("src.service.database.connections.duckdb_connection.resolve_data_path")
+    def test_resolve_data_path_local(self, mock_resolve):
+        """Local paths are delegated to the centralized resolver and stringified."""
+        mock_resolve.return_value = Path("/data/gwas")
 
         settings = DatabaseSettings(
             database_type=DatabaseType.DUCKDB,
@@ -49,7 +45,21 @@ class TestDuckDBConnection:
         )
         conn = DuckDBConnection(settings)
         result = conn._resolve_data_path()
-        assert result == mock_path
+
+        assert result == "/data/gwas"
+        assert conn._is_s3 is False
+        mock_resolve.assert_called_once_with("/data/gwas")
+
+    def test_resolve_data_path_s3_bypasses_filesystem(self):
+        """S3 paths are returned as-is (no local existence check) and flag _is_s3."""
+        settings = DatabaseSettings(
+            database_type=DatabaseType.DUCKDB,
+            duckdb_data_path="s3://my-bucket/gwas/",
+        )
+        conn = DuckDBConnection(settings)
+
+        assert conn._resolve_data_path() == "s3://my-bucket/gwas"
+        assert conn._is_s3 is True
 
     def test_connect_without_duckdb_installed(self):
         """Test that ImportError is raised when duckdb is not installed."""
@@ -59,10 +69,11 @@ class TestDuckDBConnection:
         )
         conn = DuckDBConnection(settings)
 
+        # A None entry in sys.modules makes `import duckdb` raise ImportError,
+        # which is what connect() is expected to re-raise with install guidance.
         with patch.dict("sys.modules", {"duckdb": None}):
-            with patch("builtins.__import__", side_effect=ImportError("No module named 'duckdb'")):
-                # This would test the import error, but it's tricky to mock properly
-                pass
+            with pytest.raises(ImportError, match="duckdb"):
+                conn.connect()
 
     def test_execute_query_without_connection(self):
         """Test that RuntimeError is raised when executing without connection."""

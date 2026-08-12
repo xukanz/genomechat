@@ -1,12 +1,13 @@
 """Tests for unified file storage service."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from datetime import datetime
 import pandas as pd
 
 from src.service.storage.file_storage_service import FileStorageService
 from src.models.file_storage import FileRecordCreate, FileType
+from tests.conftest import make_mongo_cursor
 
 
 @pytest.fixture
@@ -242,9 +243,9 @@ def test_list_by_user(file_storage_service):
         },
     ]
 
-    mock_cursor = MagicMock()
-    mock_cursor.__iter__ = MagicMock(return_value=iter(mock_docs))
-    file_storage_service.files_collection.find = MagicMock(return_value=mock_cursor)
+    file_storage_service.files_collection.find = MagicMock(
+        return_value=make_mongo_cursor(mock_docs)
+    )
 
     results = file_storage_service.list_by_user("user-123")
 
@@ -271,9 +272,9 @@ def test_list_by_thread(file_storage_service):
         },
     ]
 
-    mock_cursor = MagicMock()
-    mock_cursor.__iter__ = MagicMock(return_value=iter(mock_docs))
-    file_storage_service.files_collection.find = MagicMock(return_value=mock_cursor)
+    file_storage_service.files_collection.find = MagicMock(
+        return_value=make_mongo_cursor(mock_docs)
+    )
 
     results = file_storage_service.list_by_thread(thread_id, "user-123")
 
@@ -303,9 +304,9 @@ def test_list_by_file_type(file_storage_service):
         },
     ]
 
-    mock_cursor = MagicMock()
-    mock_cursor.__iter__ = MagicMock(return_value=iter(mock_docs))
-    file_storage_service.files_collection.find = MagicMock(return_value=mock_cursor)
+    file_storage_service.files_collection.find = MagicMock(
+        return_value=make_mongo_cursor(mock_docs)
+    )
 
     results = file_storage_service.list_by_file_type(FileType.QUERY_RESULT)
 

@@ -86,6 +86,11 @@ async def chat(
             from src.service.storage.conversation_service import ConversationService
 
             conversation_service = ConversationService()
+            # Bound before the try so a metadata failure degrades to "don't
+            # generate a title" rather than raising NameError below. Defaulting
+            # to False also stops a failed lookup from being read as a new
+            # conversation, which would regenerate an existing title.
+            is_new_conversation = False
             try:
                 # Try to get existing conversation
                 conversation = conversation_service.get_conversation(
@@ -104,6 +109,7 @@ async def chat(
                         title,
                         project_id=request.project_id,  # Use project_id from request
                     )
+                    is_new_conversation = True
                     logger.info(
                         f"✨ Created new conversation {conversation_id} in project {request.project_id or 'default'}"
                     )
@@ -165,7 +171,7 @@ async def chat(
                 logger.debug("failed to finalize trace attrs (sync): %s", _e)
 
             # Auto-generate title for first message in conversation (async, non-blocking)
-            if not conversation:
+            if is_new_conversation:
                 logger.info(
                     f"🎯 Scheduling title generation for new conversation {conversation_id}"
                 )

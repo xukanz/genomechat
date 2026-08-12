@@ -1,11 +1,11 @@
 """Tests for conversation service."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock
 from datetime import datetime
 
 from src.service.storage.conversation_service import ConversationService
-from src.models.conversation import Conversation
+from tests.conftest import make_mongo_cursor
 
 
 @pytest.fixture
@@ -54,18 +54,25 @@ def test_create_conversation(conversation_service):
     # Mock: insert_one succeeds
     mock_collection.insert_one.return_value = None
 
-    conversation = conversation_service.create_conversation(
-        conversation_id="conv-123", user_id="user-456", title="Test Conversation"
-    )
+    # With no project_id the service falls back to the user's default project,
+    # which would otherwise build a real ProjectService against MongoDB.
+    with patch("src.service.storage.project_service.ProjectService") as mock_project_service:
+        mock_project_service.return_value.ensure_default_project.return_value = MagicMock(
+            id="default-proj"
+        )
+        conversation = conversation_service.create_conversation(
+            conversation_id="conv-123", user_id="user-456", title="Test Conversation"
+        )
 
     assert conversation.id == "conv-123"
     assert conversation.user_id == "user-456"
     assert conversation.title == "Test Conversation"
     mock_collection.insert_one.assert_called_once()
 
-    # Verify thread_id was included in insert
+    # Verify thread_id and the resolved default project were included in insert
     call_args = mock_collection.insert_one.call_args[0][0]
     assert call_args["thread_id"] == "user-456:conv-123"
+    assert call_args["project_id"] == "default-proj"
 
 
 def test_list_user_conversations(conversation_service):
@@ -89,15 +96,14 @@ def test_list_user_conversations(conversation_service):
         },
     ]
 
-    mock_cursor = MagicMock()
-    mock_cursor.__iter__.return_value = iter(mock_conversations)
-    mock_collection.find.return_value.sort.return_value = mock_cursor
+    mock_collection.find.return_value = make_mongo_cursor(mock_conversations)
 
     conversations = conversation_service.list_user_conversations("user-123")
 
     assert len(conversations) == 2
     assert conversations[0].id == "conv-1"
     assert conversations[1].id == "conv-2"
+    mock_collection.find.assert_called_once_with({"user_id": "user-123"})
 
 
 def test_get_conversation(conversation_service):
