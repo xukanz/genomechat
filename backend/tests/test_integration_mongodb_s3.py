@@ -66,7 +66,9 @@ class TestMongoDBIntegration:
         user_data = UserCreate(
             email=f"test_{datetime.now().timestamp()}@example.com",
             name="Test User",
-            password="password123",
+            # validate_password_strength requires 8+ chars with an uppercase,
+            # a lowercase, a digit and a special character.
+            password="TestPassword123!",
         )
         user = service.create_user(user_data)
         assert user.email == user_data.email
