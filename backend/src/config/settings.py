@@ -532,9 +532,22 @@ class Settings(BaseSettings):
 
         The sandbox repeats this rule in s3_helpers.get_s3_client; it runs as a
         separate service and cannot import these settings.
+
+        The value is normalised before use. python-dotenv strips `# comment`
+        from a value, but Docker Compose's own env_file parser does not
+        necessarily, and botocore rejects anything it does not recognise with
+        InvalidS3AddressingStyleError at client construction — which would take
+        out every S3 call rather than just this setting.
         """
-        if self.aws_s3_addressing_style != "auto":
-            return self.aws_s3_addressing_style
+        configured = self.aws_s3_addressing_style.split("#")[0].strip().lower()
+
+        if configured in {"path", "virtual"}:
+            return configured
+        if configured and configured != "auto":
+            logger.warning(
+                f"Ignoring unrecognised AWS_S3_ADDRESSING_STYLE "
+                f"{self.aws_s3_addressing_style!r}; expected auto, path, or virtual"
+            )
         return "path" if self.aws_endpoint_url else "auto"
 
     def validate_s3_bucket(self, bucket: str) -> bool:

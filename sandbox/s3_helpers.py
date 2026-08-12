@@ -67,9 +67,15 @@ def get_s3_client():
     # whenever a custom endpoint is set. This mirrors
     # settings.s3_addressing_style_resolved in the backend; the sandbox is a
     # separate service and cannot import it.
-    endpoint_url = os.getenv('AWS_ENDPOINT_URL') or None
-    addressing_style = os.getenv('AWS_S3_ADDRESSING_STYLE', 'auto')
-    if addressing_style == 'auto':
+    #
+    # Both values are normalised first. python-dotenv strips `# comment` from a
+    # value but Docker Compose's env_file parser does not necessarily, and
+    # botocore raises InvalidS3AddressingStyleError for anything it does not
+    # recognise — taking out every S3 call, not just this setting.
+    endpoint_url = os.getenv('AWS_ENDPOINT_URL', '').split('#')[0].strip() or None
+
+    addressing_style = os.getenv('AWS_S3_ADDRESSING_STYLE', '').split('#')[0].strip().lower()
+    if addressing_style not in ('path', 'virtual'):
         addressing_style = 'path' if endpoint_url else 'auto'
 
     # Configure boto3 to use single connection for sandbox environment

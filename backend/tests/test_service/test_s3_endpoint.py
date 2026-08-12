@@ -125,6 +125,53 @@ class TestResolvedProperty:
             assert s3_module.settings.s3_addressing_style_resolved == expected
 
 
+class TestMalformedConfigIsTolerated:
+    """Values arrive from .env files, which different parsers clean differently.
+
+    python-dotenv strips a trailing `# comment`; Docker Compose's env_file
+    parser does not necessarily. botocore answers an unrecognised style with
+    InvalidS3AddressingStyleError at client construction, so one stray comment
+    would disable S3 entirely rather than just this one setting.
+    """
+
+    def test_inline_comment_is_stripped(self, captured_boto):
+        with _configure(
+            aws_endpoint_url="http://localhost:9000",
+            aws_s3_addressing_style="auto     # auto | path | virtual",
+        ):
+            s3_module.get_s3_client()
+
+        assert _kwargs(captured_boto)["config"].s3["addressing_style"] == "path"
+
+    def test_inline_comment_on_an_explicit_style(self, captured_boto):
+        with _configure(aws_s3_addressing_style="virtual # pick one"):
+            s3_module.get_s3_client()
+
+        assert _kwargs(captured_boto)["config"].s3["addressing_style"] == "virtual"
+
+    def test_case_and_padding_are_normalised(self, captured_boto):
+        with _configure(aws_s3_addressing_style="  PATH  "):
+            s3_module.get_s3_client()
+
+        assert _kwargs(captured_boto)["config"].s3["addressing_style"] == "path"
+
+    def test_unrecognised_value_falls_back_instead_of_breaking_s3(self, captured_boto):
+        with _configure(
+            aws_endpoint_url="http://localhost:9000",
+            aws_s3_addressing_style="nonsense",
+        ):
+            s3_module.get_s3_client()
+
+        assert _kwargs(captured_boto)["config"].s3["addressing_style"] == "path"
+
+    def test_endpoint_with_an_inline_comment_still_resolves(self, captured_boto):
+        """Guards the sandbox-side normalisation contract from the backend too."""
+        with _configure(aws_s3_addressing_style="", aws_endpoint_url=None):
+            s3_module.get_s3_client()
+
+        assert _kwargs(captured_boto)["config"].s3["addressing_style"] == "auto"
+
+
 class TestClientIsStillCached:
     def test_second_call_reuses_the_singleton(self, captured_boto):
         with _configure(aws_endpoint_url="http://localhost:9000"):

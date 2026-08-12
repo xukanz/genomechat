@@ -108,6 +108,36 @@ class TestSandboxAddressingStyle:
 
         assert _kwargs(boto3_mock)["config"].s3["addressing_style"] == "virtual"
 
+    def test_inline_comment_is_stripped(self, s3_helpers):
+        """Compose's env_file parser may keep `# comment` in the value."""
+        os.environ["AWS_ENDPOINT_URL"] = "http://localhost:9000"
+        os.environ["AWS_S3_ADDRESSING_STYLE"] = "auto     # auto | path | virtual"
+
+        with patch.object(s3_helpers, "boto3") as boto3_mock:
+            s3_helpers.get_s3_client()
+
+        assert _kwargs(boto3_mock)["config"].s3["addressing_style"] == "path", (
+            "botocore rejects an unrecognised style at client construction, which "
+            "would break every S3 call in the sandbox, not just this setting"
+        )
+
+    def test_unrecognised_style_falls_back(self, s3_helpers):
+        os.environ["AWS_ENDPOINT_URL"] = "http://localhost:9000"
+        os.environ["AWS_S3_ADDRESSING_STYLE"] = "nonsense"
+
+        with patch.object(s3_helpers, "boto3") as boto3_mock:
+            s3_helpers.get_s3_client()
+
+        assert _kwargs(boto3_mock)["config"].s3["addressing_style"] == "path"
+
+    def test_endpoint_inline_comment_is_stripped(self, s3_helpers):
+        os.environ["AWS_ENDPOINT_URL"] = "http://localhost:9000  # local MinIO"
+
+        with patch.object(s3_helpers, "boto3") as boto3_mock:
+            s3_helpers.get_s3_client()
+
+        assert _kwargs(boto3_mock)["endpoint_url"] == "http://localhost:9000"
+
     def test_single_connection_pool_is_preserved(self, s3_helpers):
         """RLIMIT_NPROC in the sandbox makes extra connection threads fatal."""
         os.environ["AWS_ENDPOINT_URL"] = "http://localhost:9000"
