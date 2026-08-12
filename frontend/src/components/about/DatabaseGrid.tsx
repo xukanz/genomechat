@@ -17,7 +17,7 @@ const databases = [
   },
   {
     name: "MySQL",
-    description: "Ensembl public mirror",
+    description: "Enterprise SQL",
     color: "#4479A1",
     bgColor: "bg-cyan-100"
   },
@@ -38,12 +38,6 @@ const databases = [
     description: "AWS serverless SQL",
     color: "#FF9900",
     bgColor: "bg-orange-100"
-  },
-  {
-    name: "MySQL",
-    description: "Ensembl public mirror",
-    color: "#4479A1",
-    bgColor: "bg-blue-100"
   }
 ]
 
@@ -143,7 +137,7 @@ export function DatabaseCount() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
       >
-        7
+        {databases.length}
       </motion.div>
       <p className="text-slate-600 font-medium">Database Types Supported</p>
       <p className="text-sm text-slate-500 mt-1">

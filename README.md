@@ -40,29 +40,23 @@ Three database profiles ship by default, all built from public genomics resource
 |---|---|---|---|
 | **clinvar** | [NCBI ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/) variant/condition assertions | SQLite, built locally | Public domain |
 | **gwas** | [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/) associations + studies | Parquet via DuckDB, built locally | CC BY 4.0 |
-| **ensembl** *(opt-in)* | [Ensembl](https://www.ensembl.org/) human core annotation | Live query against the public MySQL mirror | Open |
+| **ensembl** | [Ensembl](https://www.ensembl.org/) GRCh38 gene annotation | Parquet via DuckDB, built locally | EMBL-EBI, no restrictions |
 
-Build the two local ones before first run:
+Build them before first run:
 
 ```bash
 cd backend
 uv run python scripts/build_genomics_databases.py --download
 ```
 
-This downloads roughly 500 MB of source files into `backend/databases/_raw/` and produces `databases/clinvar/clinvar.db` (~1.7 GB, 4.5M rows) plus `databases/gwas/*.parquet`. Both the raw downloads and the built artifacts are gitignored — every checkout rebuilds them. The ClinVar build keeps GRCh38 rows only; pass `--clinvar-full` to keep every assembly (roughly double).
+This downloads roughly 640 MB of source files into `backend/databases/_raw/` and produces `databases/clinvar/clinvar.db` (~1.7 GB, 4.5M rows), `databases/gwas/*.parquet`, and `databases/ensembl/*.parquet` (~40 MB). Both the raw downloads and the built artifacts are gitignored — every checkout rebuilds them. The ClinVar build keeps GRCh38 rows only; pass `--clinvar-full` to keep every assembly (roughly double).
 
-Budget about 15 minutes for the first run, most of it download time.
+Budget about 20 minutes for the first run, most of it download time. Skip individual profiles with `--skip-clinvar`, `--skip-gwas`, `--skip-ensembl`.
 
-The `ensembl` profile needs no build step — it queries `ensembldb.ensembl.org:3306` anonymously — but it is **disabled by default**, so only ClinVar and GWAS appear until you turn it on:
-
-```bash
-DB_REGISTRY_ENSEMBL_ENABLED=true
-```
-
-It ships off because it needs outbound MySQL *protocol* access, which many networks block at the application layer even though the TCP handshake succeeds — the connection opens and is then reset, which is a confusing way to fail. Check before enabling:
+The `ensembl` profile is built from the release-116 GTF. The release is pinned rather than tracking `current`, because Ensembl bakes the release number into the filename and a silent upgrade would invalidate the row counts quoted in the schema description. Move to a newer release with:
 
 ```bash
-mysql -h ensembldb.ensembl.org -u anonymous -e 'SELECT VERSION()'
+uv run python scripts/build_genomics_databases.py --download --ensembl-release 117 --skip-clinvar --skip-gwas
 ```
 
 ## 🚀 Key Features

@@ -50,7 +50,7 @@ const useCases = [
     title: "Gene Annotation",
     icon: Microscope,
     color: "orange",
-    description: "Query the Ensembl human core reference live",
+    description: "Query GRCh38 gene, transcript and exon annotation",
     details: [
       "Resolve genes, transcripts, exons and translations by symbol or ID",
       "Look up genomic coordinates on GRCh38 via seq_region",

@@ -1,155 +1,194 @@
 # Ensembl Database Context
 
+> **Note:** files in this directory are reference documentation for humans.
+> They are not injected into any prompt — `load_database_context()` has no
+> callers. What the SQL agent actually receives is
+> `backend/databases/ensembl/schema_description.yaml`, via the
+> `get_database_schema` tool. Keep the two consistent, but change the YAML when
+> you want to change agent behaviour.
+
 ## Database Overview
 
-The Ensembl human core database holds the reference gene annotation for the human genome: genes, their transcripts, exons, translations, and cross-references to external identifier systems. This profile queries the **public read-only MySQL mirror** at `ensembldb.ensembl.org` — no data is stored locally.
+Ensembl GRCh38 gene annotation: genes, their transcript isoforms, exon
+structure, and chromosome lengths. Built locally into Parquet from the public
+release-116 GTF by `scripts/build_genomics_databases.py` and queried through
+DuckDB — nothing is fetched at query time.
+
+This profile previously queried the public MySQL mirror at
+`ensembldb.ensembl.org`. It was converted to a local build because that mirror
+is unreachable from any network that filters the MySQL wire protocol, and
+because the other two profiles already worked this way.
 
 ## Key Characteristics
 
-- **Database Type**: MySQL (remote, read-only, anonymous login)
-- **Primary Focus**: Reference genome annotation
-- **SQL Dialect**: MySQL (use MySQL-compatible syntax — backticks, `LIMIT n`, `GROUP_CONCAT`)
-- **Assembly**: GRCh38
-- **Latency**: queries cross the public internet and are shared with other users
+- **Database Type**: DuckDB over Parquet, built locally
+- **Primary Focus**: Reference gene annotation
+- **SQL Dialect**: **PostgreSQL** (DuckDB implements PostgreSQL syntax)
+- **Assembly**: GRCh38, Ensembl release 116
+- **Coordinates**: 1-based inclusive, so length is `end - start + 1`
 
-## ⚠️ Performance Rules — Read First
+## ⚠️ What This Dataset Does Not Have
 
-This is a shared public server, not a local file. Unqualified scans are slow and antisocial.
+A GTF carries structure, not annotation prose or identifier mappings. Compared
+with the Ensembl core MySQL schema, these are simply absent:
 
-1. **Always** include a `LIMIT` unless the query is a pure aggregate.
-2. Filter on indexed columns: `gene.stable_id`, `gene.biotype`, `seq_region.name`, `xref.display_label`.
-3. Avoid `SELECT *` on `exon` or `transcript` without a `WHERE` clause — these are multi-million-row tables.
-4. Prefer one targeted query over several exploratory ones.
-5. `karyotype` and `meta` are tiny and safe to scan freely.
+- **Gene description text** — there is no `description` column
+- **Cross-references** to RefSeq, UniProt or EntrezGene — no `xref` /
+  `object_xref` / `external_db` equivalent
+- **Karyotype bands**
+
+Partial compensation: `genes.gene_name` *is* the HGNC symbol, so symbol lookup
+is a plain equality filter rather than the three-table join the core schema
+needed, and `transcripts.protein_id` gives the Ensembl protein ID (`ENSP…`).
 
 ## Schema Overview
 
-Only these tables are exposed to the SQL agent (whitelisted in the profile):
+Four tables. All are queryable by bare name.
 
-### Core annotation hierarchy
+### `genes` (~78k rows)
 
-The model is `gene` → `transcript` → `translation`, with exons attached to transcripts through a link table.
+`gene_id` (ENSG, unversioned), `gene_version`, `gene_name`, `gene_biotype`,
+`gene_source`, `chromosome`, `start`, `end`, `strand`, `genomic_length`,
+`transcript_count`, `coding_transcript_count`, `canonical_transcript_id`,
+`mane_select_transcript_id`, `is_primary_chromosome`.
 
-| Table | What it holds | Key columns |
-|---|---|---|
-| `gene` | One row per gene | `gene_id` (PK), `stable_id` (ENSG…), `biotype`, `seq_region_id`, `seq_region_start`, `seq_region_end`, `seq_region_strand`, `description`, `canonical_transcript_id` |
-| `transcript` | One row per transcript | `transcript_id` (PK), `gene_id` (FK), `stable_id` (ENST…), `biotype`, `seq_region_start/end/strand` |
-| `translation` | Protein products | `translation_id` (PK), `transcript_id` (FK), `stable_id` (ENSP…), `seq_start`, `seq_end` |
-| `exon` | Exon coordinates | `exon_id` (PK), `seq_region_start`, `seq_region_end`, `seq_region_strand`, `phase`, `end_phase` |
-| `exon_transcript` | **Link table** exon↔transcript | `exon_id`, `transcript_id`, `rank` (exon order within the transcript) |
+### `transcripts` (~280k rows)
 
-### Coordinates
+`transcript_id`, `gene_id`, `gene_name` (denormalised), `transcript_name`,
+`transcript_biotype`, coordinates, `genomic_length`, `exon_count`,
+`spliced_length`, `cds_length`, `cds_start`, `cds_end`, `protein_id`,
+`transcript_support_level`, `ccds_id`, `is_canonical`, `is_mane_select`,
+`is_gencode_basic`.
 
-| Table | Purpose |
-|---|---|
-| `seq_region` | Chromosomes/scaffolds. `seq_region_id` (PK), `name` (`1`, `2`, `X`, `MT`), `length`, `coord_system_id` |
-| `coord_system` | Assembly levels. `coord_system_id`, `name` (`chromosome`, `scaffold`), `version` (`GRCh38`), `rank` |
-| `assembly` | Maps components to assembled sequence |
-| `karyotype` | Cytogenetic bands: `seq_region_id`, `seq_region_start/end`, `band`, `stain` |
+### `exons` (~1.7M rows)
 
-**Genomic position always requires joining `seq_region`** — the `gene` table stores only a numeric `seq_region_id`, not a chromosome name.
+`exon_id`, `transcript_id`, `gene_id`, `exon_number`, coordinates, `length`,
+`strand`.
 
-### Cross-references
+### `chromosomes` (~200 rows)
 
-Ensembl's xref system is a three-table pattern that trips people up:
+`chromosome`, `length`, `is_primary_chromosome`. From the Ensembl FASTA index —
+the GTF has no sequence lengths.
 
-| Table | Purpose |
-|---|---|
-| `xref` | The external identifier itself: `xref_id`, `external_db_id`, `dbprimary_acc`, `display_label`, `description` |
-| `object_xref` | Links an xref to a gene/transcript/translation: `xref_id`, `ensembl_id`, `ensembl_object_type` (`Gene`\|`Transcript`\|`Translation`) |
-| `external_db` | Names the source: `external_db_id`, `db_name` (`HGNC`, `RefSeq_mRNA`, `Uniprot/SWISSPROT`, `EntrezGene`) |
-| `external_synonym` | Alternative names for an xref |
+## Critical Query Guidance
 
-To go from a **gene symbol** to an Ensembl gene you join all three. See the pattern below.
+### 1. `gene_name` is NULL for a large fraction of genes
 
-### `meta`
+Novel lncRNAs and pseudogenes carry no HGNC symbol. Filter before grouping:
 
-Key–value table describing the database itself. `SELECT * FROM meta WHERE meta_key LIKE 'assembly%'` confirms the assembly version and is a cheap sanity check.
+```sql
+WHERE gene_name IS NOT NULL
+```
+
+Otherwise a "genes by symbol" summary silently reports a large NULL bucket.
+
+### 2. Scaffolds are included
+
+The table holds unplaced scaffolds, patches and alt haplotypes alongside real
+chromosomes — deliberately, so `COUNT(*)` matches Ensembl's published figures.
+Anything reported per chromosome needs:
+
+```sql
+WHERE is_primary_chromosome
+```
+
+### 3. `spliced_length` ≠ `genomic_length`
+
+`genomic_length` spans the locus including introns; `spliced_length` is the sum
+of exon lengths, i.e. the mature RNA. "Transcript length" almost always means
+the latter. No column is called just `length` on `transcripts`, on purpose.
+
+### 4. `exon_number` is transcription order, not coordinate order
+
+On the minus strand exon 1 has the **highest** coordinates. Roughly half of all
+genes are on the minus strand, so this is not an edge case.
+
+```sql
+ORDER BY exon_number   -- biological order
+ORDER BY start         -- genomic order
+```
+
+### 5. Exon rows are per-transcript occurrences
+
+An exon shared by five transcripts appears five times. `COUNT(*)` counts
+occurrences; `COUNT(DISTINCT exon_id)` counts exons.
+
+### 6. Counts are precomputed — don't re-derive them
+
+`transcript_count`, `coding_transcript_count`, `canonical_transcript_id` and
+`mane_select_transcript_id` are computed at build time. Joining `transcripts`
+to recompute them is slower and easy to get wrong.
 
 ## Query Patterns
 
-**Gene counts by biotype** — safe aggregate, no limit needed
+**Gene counts by biotype**
+
 ```sql
-SELECT biotype, COUNT(*) AS n
-FROM gene
-GROUP BY biotype
-ORDER BY n DESC;
+SELECT gene_biotype, COUNT(*) AS n
+FROM genes
+WHERE is_primary_chromosome
+GROUP BY 1 ORDER BY n DESC LIMIT 15;
 ```
 
-**Look up a gene by symbol** — the canonical xref join
+**Look up a gene by symbol** — one table, no joins
+
 ```sql
-SELECT g.stable_id, g.biotype, sr.name AS chromosome,
-       g.seq_region_start, g.seq_region_end, g.seq_region_strand,
-       g.description
-FROM gene g
-JOIN seq_region sr    ON sr.seq_region_id = g.seq_region_id
-JOIN object_xref ox   ON ox.ensembl_id = g.gene_id
-                     AND ox.ensembl_object_type = 'Gene'
-JOIN xref x           ON x.xref_id = ox.xref_id
-JOIN external_db ed   ON ed.external_db_id = x.external_db_id
-WHERE ed.db_name = 'HGNC' AND x.display_label = 'TP53'
-LIMIT 10;
+SELECT gene_id, chromosome, start, "end", strand, gene_biotype,
+       transcript_count, mane_select_transcript_id
+FROM genes WHERE gene_name = 'TP53';
 ```
 
-**Protein-coding genes per chromosome** — restrict to real chromosomes
+**Exon structure of a gene's canonical transcript**
+
 ```sql
-SELECT sr.name AS chromosome, COUNT(*) AS genes, sr.length
-FROM gene g
-JOIN seq_region sr   ON sr.seq_region_id = g.seq_region_id
-JOIN coord_system cs ON cs.coord_system_id = sr.coord_system_id
-WHERE g.biotype = 'protein_coding'
-  AND cs.name = 'chromosome'
-  AND sr.name REGEXP '^([0-9]{1,2}|X|Y|MT)$'
-GROUP BY sr.name, sr.length
-ORDER BY genes DESC;
+SELECT e.exon_number, e.start, e."end", e.length
+FROM exons e
+JOIN genes g ON g.canonical_transcript_id = e.transcript_id
+WHERE g.gene_name = 'BRCA2'
+ORDER BY e.exon_number;
 ```
 
-**Transcripts per gene**
+**Gene density per megabase**
+
 ```sql
-SELECT g.stable_id, g.biotype, COUNT(t.transcript_id) AS n_transcripts
-FROM gene g
-JOIN transcript t ON t.gene_id = g.gene_id
-WHERE g.biotype = 'protein_coding'
-GROUP BY g.gene_id, g.stable_id, g.biotype
-ORDER BY n_transcripts DESC
-LIMIT 20;
+SELECT g.chromosome,
+       COUNT(*) AS genes,
+       c.length / 1e6 AS mb,
+       COUNT(*) / (c.length / 1e6) AS genes_per_mb
+FROM genes g
+JOIN chromosomes c USING (chromosome)
+WHERE g.is_primary_chromosome AND g.gene_biotype = 'protein_coding'
+GROUP BY g.chromosome, c.length
+ORDER BY genes_per_mb DESC;
 ```
 
-**Exon structure of a transcript** — note the `exon_transcript` link and `rank`
-```sql
-SELECT et.rank,
-       e.seq_region_start, e.seq_region_end,
-       e.seq_region_end - e.seq_region_start + 1 AS length
-FROM transcript t
-JOIN exon_transcript et ON et.transcript_id = t.transcript_id
-JOIN exon e             ON e.exon_id = et.exon_id
-WHERE t.stable_id = 'ENST00000380152'
-ORDER BY et.rank;
-```
+**Longest coding transcripts**
 
-**Canonical transcript of a gene**
 ```sql
-SELECT g.stable_id AS gene, t.stable_id AS canonical_transcript, t.biotype
-FROM gene g
-JOIN transcript t ON t.transcript_id = g.canonical_transcript_id
-WHERE g.stable_id = 'ENSG00000141510';
+SELECT gene_name, transcript_id, cds_length, spliced_length, exon_count
+FROM transcripts
+WHERE cds_length IS NOT NULL AND is_mane_select
+ORDER BY cds_length DESC LIMIT 20;
 ```
 
 ## Gotchas
 
-- **`stable_id` vs internal id**: `gene_id` is a database-internal integer that changes between releases. `stable_id` (`ENSG…`) is the stable public identifier. Join on internal ids, report stable ids.
-- **Version suffixes**: `stable_id` in the table has no `.N` version suffix, but users often paste `ENSG00000141510.18`. Strip the suffix before matching.
-- **Strand**: `seq_region_strand` is `1` or `-1`, not `+`/`-`.
-- **Coordinates are 1-based inclusive**, unlike BED.
-- **Patches and haplotypes**: `seq_region` includes alt scaffolds. Filter on `coord_system.name = 'chromosome'` plus a name pattern to keep results on the primary assembly.
-- **Database name carries the release** (e.g. `homo_sapiens_core_115_38`). If the connection fails, the mirror may have retired that release — `SHOW DATABASES LIKE 'homo_sapiens_core%'` lists what is available, and `DB_REGISTRY_ENSEMBL_DATABASE` overrides the target.
+- **`gene_id` has no `.N` version suffix.** Users paste `ENSG00000141510.18`;
+  strip with `split_part(input, '.', 1)`. The version is in `gene_version`.
+- **`strand` is `'+'` / `'-'`**, not the `1` / `-1` of the core MySQL schema.
+- **`chromosome` is text**, so `ORDER BY chromosome` puts `'10'` before `'2'`.
+- **`cds_length IS NULL` means non-coding.** A protein-coding *gene* still has
+  non-coding transcripts (retained intron, NMD).
+- **Rebuilding to a newer release** changes row counts quoted in the schema
+  description: `--ensembl-release NNN`.
 
 ## Domain Context
 
-Ensembl annotation is the reference layer that other genomics datasets hang off. Typical uses here:
-- Resolving gene symbols, Ensembl IDs, RefSeq and UniProt accessions to one another
-- Getting exact coordinates to intersect with variant positions from ClinVar
-- Comparing transcript complexity across genes
-- Checking whether a gene of interest is protein-coding, lncRNA, or a pseudogene
+Typical uses: locating a gene and its coordinates, comparing isoform
+complexity across biotypes, examining exon structure, and computing
+distributions across the genome.
 
-Because ClinVar rows carry `gene_symbol` and GWAS associations carry mapped genes, Ensembl is the natural join partner for cross-database questions — though the SQL agent can only query one profile at a time, so such analyses need the coder agent to combine exported results.
+The natural cross-database move is coordinate or symbol overlap — taking a gene
+from here and looking up its ClinVar variants, or its GWAS associations. Only
+one profile is active at a time, so that is a two-step conversation rather than
+a join.

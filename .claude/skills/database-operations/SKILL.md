@@ -230,7 +230,7 @@ This platform supports runtime database profile switching:
 |---------|--------|----------|
 | `clinvar` | SQLite | Variant–disease interpretation |
 | `gwas` | DuckDB/Parquet | Genome-wide association statistics |
-| `ensembl` | MySQL | Gene / transcript annotation (public mirror) |
+| `ensembl` | DuckDB/Parquet | Gene / transcript annotation (GRCh38 GTF, built locally) |
 
 ### Backend Usage
 
