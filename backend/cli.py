@@ -25,6 +25,26 @@ from src.cli.auth import (
 
 console = Console()
 
+# Request timeouts, in seconds.
+#
+# These bound a whole agent run, not a single HTTP hop: one turn can fan out to
+# the SQL agent and the coder, and each sandbox call is itself allowed up to
+# settings.sandbox_timeout. A plain "chart this table" turn measured 323s in
+# practice, so the previous 300s standard timeout fired *after* the backend had
+# already done the work — the run completed server-side and the client threw it
+# away. Keep these comfortably above the slowest realistic turn.
+STANDARD_TIMEOUT_SECONDS = 600.0
+DEEP_RESEARCH_TIMEOUT_SECONDS = 1200.0
+
+
+def _timeout_for_mode(research_mode: str) -> float:
+    """Return the client timeout appropriate for a research mode."""
+    return (
+        DEEP_RESEARCH_TIMEOUT_SECONDS
+        if research_mode == "deep_research"
+        else STANDARD_TIMEOUT_SECONDS
+    )
+
 
 class AgentCLI:
     """Interactive CLI client for the GenomeChat agent API."""
@@ -39,9 +59,8 @@ class AgentCLI:
         self.api_url = api_url.rstrip("/")
         self.thread_id: Optional[str] = None
         self.research_mode = research_mode
-        # Increase timeout for deep research mode (10 min) vs standard (5 min)
-        timeout = 600.0 if research_mode == "deep_research" else 300.0
-        self.client = httpx.AsyncClient(timeout=timeout)
+        self.timeout = _timeout_for_mode(research_mode)
+        self.client = httpx.AsyncClient(timeout=self.timeout)
         self.conversation_history: list[dict[str, str]] = []
 
         # Authentication
@@ -326,10 +345,16 @@ class AgentCLI:
                     {"role": "assistant", "content": str(full_response)}
                 )
 
+        except httpx.TimeoutException:
+            console.print(
+                f"[red]Stream timed out after {self.timeout / 60:.0f} minutes. The backend "
+                f"may still have completed the turn — check the conversation history.[/red]"
+            )
         except httpx.RequestError as e:
-            console.print(f"[red]Connection error: {e}[/red]")
+            # Several httpx transport errors stringify to "", so name the class too.
+            console.print(f"[red]Connection error ({type(e).__name__}): {e or 'no detail'}[/red]")
         except Exception as e:
-            console.print(f"[red]Unexpected error: {e}[/red]")
+            console.print(f"[red]Unexpected error ({type(e).__name__}): {e or 'no detail'}[/red]")
 
     async def chat_sync(self, message: str) -> None:
         """Send message and get complete response (non-streaming).
@@ -393,8 +418,24 @@ class AgentCLI:
                 console.print(f"[red]{error_data.get('detail', 'Unknown error')}[/red]")
             except Exception:
                 console.print(f"[red]{e.response.text}[/red]")
+        except httpx.TimeoutException:
+            # str(httpx.ReadTimeout()) is the empty string, so the generic
+            # handler below used to render this as a bare "Error:" with no
+            # cause. Say what timed out, and that the server may have finished
+            # anyway — the run keeps going server-side after the client bails.
+            console.print(
+                f"[red]Timed out after {self.timeout / 60:.0f} minutes waiting for "
+                f"{self.api_url}/chat[/red]"
+            )
+            console.print(
+                "[yellow]The backend may still have completed the turn — check the "
+                "conversation history before re-asking. Streaming mode (/stream) avoids "
+                "this by showing progress as it arrives.[/yellow]"
+            )
+        except httpx.RequestError as e:
+            console.print(f"[red]Connection error ({type(e).__name__}): {e or 'no detail'}[/red]")
         except Exception as e:
-            console.print(f"[red]Error: {e}[/red]")
+            console.print(f"[red]Error ({type(e).__name__}): {e or 'no detail'}[/red]")
 
     def _format_plan(self, plan_data: dict) -> str:
         """Format plan data as markdown with Claude Code-style checkboxes.
@@ -528,16 +569,20 @@ class AgentCLI:
         if mode.lower() in ["deep", "deep_research"]:
             self.research_mode = "deep_research"
             # Recreate client with increased timeout for deep research
-            self.client = httpx.AsyncClient(timeout=600.0)
+            self.timeout = _timeout_for_mode(self.research_mode)
+            self.client = httpx.AsyncClient(timeout=self.timeout)
             console.print("[green]Research mode set to: deep_research[/green]")
             console.print(
                 "[dim]Comprehensive analysis mode enabled. Research will be more thorough.[/dim]"
             )
-            console.print("[dim]Timeout increased to 10 minutes for longer queries.[/dim]")
+            console.print(
+                f"[dim]Timeout increased to {self.timeout / 60:.0f} minutes for longer queries.[/dim]"
+            )
         elif mode.lower() == "standard":
             self.research_mode = "standard"
             # Recreate client with standard timeout
-            self.client = httpx.AsyncClient(timeout=300.0)
+            self.timeout = _timeout_for_mode(self.research_mode)
+            self.client = httpx.AsyncClient(timeout=self.timeout)
             console.print("[green]Research mode set to: standard[/green]")
             console.print(
                 "[dim]Efficient mode enabled. Responses will be direct and focused.[/dim]"
