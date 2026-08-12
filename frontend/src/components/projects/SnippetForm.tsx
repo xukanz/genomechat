@@ -128,7 +128,7 @@ export function SnippetForm({
           id="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., TCR Diversity Analysis"
+          placeholder="e.g., Variant Density Analysis"
           disabled={isSubmitting}
           className={errors.name ? 'border-destructive' : ''}
         />

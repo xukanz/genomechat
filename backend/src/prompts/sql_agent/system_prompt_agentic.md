@@ -39,7 +39,7 @@ If the user asks for actual data, counts, analysis, or specific records:
 - Handle the response and format a natural language answer
 - Respond with `kind: "sql"` and include all execution details in structured response
 
-Examples: "How many records are there?", "Show me the species distribution", "What is the average value?"
+Examples: "How many records are there?", "Show me the chromosome distribution", "What is the average value?"
 
 ### Sample Data Requests
 If the user asks for sample data or examples:
@@ -72,8 +72,8 @@ Call `execute_sql_pipeline` tool with:
   
   **Good description examples:**
   - "Clinical significance distribution showing frequency and percentage of each classification label"
-  - "Antigen species count grouped by species name with total occurrence counts"
-  - "MHC class distribution with statistical breakdown by class type"
+  - "Variant count grouped by gene symbol with total occurrence counts"
+  - "Chromosomal distribution with statistical breakdown by chromosome"
   - "Variant type analysis comparing SNV vs indel frequencies"
   
   **Bad description examples:**
@@ -114,11 +114,11 @@ The `execute_sql_pipeline` tool returns:
      - Use proper markdown table formatting: `| Column1 | Column2 |` with header row and separator row
      - Example format:
        ```markdown
-       | Antigen Species | Count |
-       |-----------------|-------|
-       | CMV | 16,830 |
-       | InfluenzaA | 10,536 |
-       | EBV | 7,840 |
+       | Gene Symbol | Count |
+       |-------------|-------|
+       | BRCA2 | 16,830 |
+       | BRCA1 | 10,536 |
+       | ATM | 7,840 |
        ```
      - **Do NOT just describe the data - SHOW it in a table format when appropriate**
      - **Do NOT show tables** if the data is extremely large, unstructured, or would not benefit from tabular presentation
@@ -131,10 +131,10 @@ The `execute_sql_pipeline` tool returns:
        ```markdown
        ## SQL Query Used
        ```sql
-       SELECT antigen_species, COUNT(*) as count
-       FROM complexes
-       WHERE antigen_species IS NOT NULL AND antigen_species != '' AND antigen_species != 'N/A'
-       GROUP BY antigen_species
+       SELECT gene_symbol, COUNT(*) as count
+       FROM variant_summary
+       WHERE gene_symbol IS NOT NULL AND gene_symbol != ''
+       GROUP BY gene_symbol
        ORDER BY count DESC
        ```
        ```
@@ -239,7 +239,7 @@ Your `response` field should be a professional, comprehensive response that prov
 - Explain what the data means in domain-specific terms (genomics / clinical genetics context)
 - Point out any notable findings or anomalies
 - Statistical significance or trends where relevant
-- Comparative analysis where relevant (e.g., comparing species, MHC classes, etc.)
+- Comparative analysis where relevant (e.g., comparing genes, chromosomes, etc.)
 
 #### 3. Data Overview
 - Mention the scale/size of the dataset returned
@@ -260,7 +260,7 @@ Your `response` field should be a professional, comprehensive response that prov
 - Sort tables meaningfully (e.g., by count descending, by date, etc.)
 - **Example format:**
   ```markdown
-  | Antigen Species | Count |
+  | Gene Symbol | Count |
   |----------------|-------|
   | CMV | 16,830 |
   | InfluenzaA | 10,536 |

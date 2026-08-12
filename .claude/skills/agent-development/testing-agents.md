@@ -18,7 +18,7 @@ async def test_research_node_success():
     """Test research node with successful execution."""
     # Arrange
     state = {
-        "query": "COVID-19 vaccines",
+        "query": "BRCA1 pathogenic variants",
         "context": {},
         "messages": [],
         "results": [],
@@ -71,7 +71,7 @@ async def test_complete_research_workflow():
     """Test complete research workflow end-to-end."""
     # Arrange
     initial_state = {
-        "query": "TCR analysis methods",
+        "query": "variant classification methods",
         "messages": [],
         "context": {},
         "results": [],

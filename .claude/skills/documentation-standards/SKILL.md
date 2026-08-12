@@ -366,10 +366,10 @@ See Also:
 ```python
 def calculate_tcr_similarity(seq1: str, seq2: str) -> float:
     """
-    Calculate similarity between two TCR sequences using Levenshtein distance.
+    Calculate similarity between two DNA sequences using Levenshtein distance.
 
     This function uses the normalized Levenshtein distance to calculate
-    similarity between T-cell receptor (TCR) sequences. The algorithm:
+    similarity between nucleotide sequences. The algorithm:
 
     1. Calculates edit distance (insertions, deletions, substitutions)
     2. Normalizes by the length of the longer sequence
@@ -379,8 +379,8 @@ def calculate_tcr_similarity(seq1: str, seq2: str) -> float:
     Space Complexity: O(n*m) for the dynamic programming matrix
 
     Args:
-        seq1: First TCR amino acid sequence
-        seq2: Second TCR amino acid sequence
+        seq1: First nucleotide sequence
+        seq2: Second nucleotide sequence
 
     Returns:
         Similarity score between 0 and 1, where:

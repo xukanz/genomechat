@@ -95,10 +95,10 @@ def test_create_snippet_success(registered_user, sample_project):
     headers = get_auth_headers(registered_user["access_token"])
 
     snippet_data = {
-        "name": "TCR Diversity Analysis",
+        "name": "Allele Diversity Analysis",
         "category": "domain_specific",
         "description": "Calculate Shannon diversity index",
-        "code": "from scipy.stats import entropy\n\ndef tcr_diversity(counts):\n    return entropy(counts, base=2)",
+        "code": "from scipy.stats import entropy\n\ndef allele_diversity(counts):\n    return entropy(counts, base=2)",
         "enabled": True,
     }
 
@@ -110,7 +110,7 @@ def test_create_snippet_success(registered_user, sample_project):
 
     assert response.status_code == 201
     data = response.json()
-    assert data["name"] == "TCR Diversity Analysis"
+    assert data["name"] == "Allele Diversity Analysis"
     assert data["category"] == "domain_specific"
     assert data["description"] == "Calculate Shannon diversity index"
     assert "id" in data

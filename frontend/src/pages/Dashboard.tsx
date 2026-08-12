@@ -11,7 +11,7 @@ export function Dashboard() {
   const quickActions = [
     {
       title: "Analyze Patient Data",
-      description: "Upload VCF/CSV files for neoantigen analysis",
+      description: "Upload VCF/CSV files for variant analysis",
       icon: Dna,
       color: "text-blue-600",
       bgColor: "bg-blue-100/50",

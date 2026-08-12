@@ -64,7 +64,7 @@ def test_all_request_knobs_surface_as_tags():
     attrs = build_request_trace_attrs(
         user_id="u-1",
         thread_id="u-1:c-1",
-        first_user_message="analyze the TCR data",
+        first_user_message="analyze the variant data",
         research_mode="deep_research",
         code_language="python",
         database_id="clinvar_v2",
@@ -559,14 +559,14 @@ def test_finalize_combines_all_dimensions():
     settings.trace_capture_payloads = True
     existing = ["research_mode:deep_research", "code_language:python"]
     attrs = build_request_trace_finalize_attrs(
-        first_user_message="Analyze the TCR data",
-        output="## TCR Analysis Complete\n\nKey findings: …",
+        first_user_message="Analyze the variant data",
+        output="## Variant Analysis Complete\n\nKey findings: …",
         turn_index=2,
         existing_tags=existing,
         research_mode="deep_research",
     )
     # Name = heading + turn + deep-research suffix
-    assert attrs["langfuse.trace.name"] == "TCR Analysis Complete · t2 [deep]"
+    assert attrs["langfuse.trace.name"] == "Variant Analysis Complete · t2 [deep]"
     # Turn metadata + tags merged with originals
     assert attrs["langfuse.metadata.turn_index"] == 2
     merged = attrs["langfuse.tags"]
@@ -575,4 +575,4 @@ def test_finalize_combines_all_dimensions():
     assert "turn:2" in merged
     assert "turn:followup" in merged
     # Output captured
-    assert "TCR Analysis Complete" in attrs["langfuse.observation.output"]
+    assert "Variant Analysis Complete" in attrs["langfuse.observation.output"]

@@ -166,14 +166,19 @@ def execute_sql_query_and_save(query: str, description: str = "") -> str:
         query_lower = query.lower()
         content_type = "data"
 
-        if "antigen_species" in query_lower:
-            content_type = "antigen_species"
-        elif "antigen_epitope" in query_lower or "epitope" in query_lower:
-            content_type = "epitope"
-        elif "mhc_class" in query_lower:
-            content_type = "mhc_class"
-        elif "chains" in query_lower:
-            content_type = "chains"
+        # Keyed on columns that exist in the shipped profiles (ClinVar, GWAS,
+        # Ensembl). Anything unmatched falls through to the description, which
+        # is the better name when it is available.
+        if "clinical_significance" in query_lower or "clin_sig" in query_lower:
+            content_type = "clinical_significance"
+        elif "gene_symbol" in query_lower or "mapped_gene" in query_lower:
+            content_type = "gene"
+        elif "phenotype" in query_lower or "trait" in query_lower:
+            content_type = "trait"
+        elif "chromosome" in query_lower or "chr_id" in query_lower:
+            content_type = "chromosome"
+        elif "variation_id" in query_lower or "variant_type" in query_lower:
+            content_type = "variant"
         elif description:
             # Clean description for filename
             clean_desc = "".join(

@@ -45,9 +45,9 @@ def execute_sql_pipeline(
                     This description will be saved in file metadata for traceability and
                     used by downstream agents (e.g., coder agent) for context.
                     Examples:
-                    - "Epitope distribution analysis showing frequency and percentage of each epitope"
-                    - "Antigen species count grouped by species name with total occurrences"
-                    - "MHC class distribution with statistical breakdown"
+                    - "Clinical significance distribution showing frequency and percentage of each category"
+                    - "Variant count grouped by gene symbol with total occurrences"
+                    - "Chromosomal variant density with statistical breakdown"
 
     Returns:
         Structured result string with status, feedback, and results.
