@@ -1109,6 +1109,11 @@ async def stream_chat(
                                             if isinstance(_msg, AIMessage):
                                                 extraction_assistant_message = _msg.content
                                                 break
+                                            # Legacy shape: coordinator answers used to be
+                                            # persisted as HumanMessage(name="coordinator").
+                                            # Threads checkpointed before that fix still carry
+                                            # them, so keep reading them here. New turns hit the
+                                            # AIMessage branch above.
                                             if (
                                                 isinstance(_msg, HumanMessage)
                                                 and getattr(_msg, "name", None) == "coordinator"

@@ -61,11 +61,29 @@ def get_s3_client():
         Configured with minimal max_pool_connections to avoid thread usage
         in resource-constrained sandbox environment.
     """
+    # A self-hosted, S3-compatible server (MinIO, Ceph, LocalStack) is reached by
+    # host:port and generally cannot serve virtual-host addressing, which would
+    # resolve buckets as http://my-bucket.localhost:9000. Default to path style
+    # whenever a custom endpoint is set. This mirrors
+    # settings.s3_addressing_style_resolved in the backend; the sandbox is a
+    # separate service and cannot import it.
+    #
+    # Both values are normalised first. python-dotenv strips `# comment` from a
+    # value but Docker Compose's env_file parser does not necessarily, and
+    # botocore raises InvalidS3AddressingStyleError for anything it does not
+    # recognise — taking out every S3 call, not just this setting.
+    endpoint_url = os.getenv('AWS_ENDPOINT_URL', '').split('#')[0].strip() or None
+
+    addressing_style = os.getenv('AWS_S3_ADDRESSING_STYLE', '').split('#')[0].strip().lower()
+    if addressing_style not in ('path', 'virtual'):
+        addressing_style = 'path' if endpoint_url else 'auto'
+
     # Configure boto3 to use single connection for sandbox environment
     # This completely avoids threading issues with strict RLIMIT_NPROC
     config = Config(
         max_pool_connections=1,  # Single connection to avoid threading
-        retries={'max_attempts': 3, 'mode': 'standard'}
+        retries={'max_attempts': 3, 'mode': 'standard'},
+        s3={'addressing_style': addressing_style}
     )
     return boto3.client(
         's3',
@@ -73,6 +91,7 @@ def get_s3_client():
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
         aws_session_token=os.getenv('AWS_SESSION_TOKEN'),  # Optional, for temporary credentials
         region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'),
+        endpoint_url=endpoint_url,
         config=config
     )
 

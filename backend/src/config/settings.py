@@ -299,6 +299,16 @@ class Settings(BaseSettings):
         None,
         description="Comma-separated list of allowed S3 buckets (optional whitelist)",
     )
+    aws_endpoint_url: str | None = Field(
+        None,
+        description="Custom S3 endpoint for S3-compatible storage, e.g. http://localhost:9000 "
+        "for a local MinIO. Leave unset to talk to real AWS.",
+    )
+    aws_s3_addressing_style: str = Field(
+        default="auto",
+        description="S3 addressing style: 'auto', 'path', or 'virtual'. See "
+        "s3_addressing_style_resolved for how 'auto' behaves.",
+    )
 
     # SQL Query Results Configuration
     sql_always_save_to_s3: bool = Field(
@@ -509,6 +519,36 @@ class Settings(BaseSettings):
         if self.allowed_s3_buckets:
             return [bucket.strip() for bucket in self.allowed_s3_buckets.split(",")]
         return []
+
+    @property
+    def s3_addressing_style_resolved(self) -> str:
+        """Addressing style to hand boto3.
+
+        'auto' means: path-style when a custom endpoint is configured, boto3's own
+        'auto' otherwise. Self-hosted S3 servers (MinIO, Ceph, LocalStack) are
+        reached by host:port and generally cannot serve virtual-host addressing,
+        which would resolve bucket names as `http://my-bucket.localhost:9000`.
+        Real AWS keeps boto3's default, since path-style is deprecated there.
+
+        The sandbox repeats this rule in s3_helpers.get_s3_client; it runs as a
+        separate service and cannot import these settings.
+
+        The value is normalised before use. python-dotenv strips `# comment`
+        from a value, but Docker Compose's own env_file parser does not
+        necessarily, and botocore rejects anything it does not recognise with
+        InvalidS3AddressingStyleError at client construction — which would take
+        out every S3 call rather than just this setting.
+        """
+        configured = self.aws_s3_addressing_style.split("#")[0].strip().lower()
+
+        if configured in {"path", "virtual"}:
+            return configured
+        if configured and configured != "auto":
+            logger.warning(
+                f"Ignoring unrecognised AWS_S3_ADDRESSING_STYLE "
+                f"{self.aws_s3_addressing_style!r}; expected auto, path, or virtual"
+            )
+        return "path" if self.aws_endpoint_url else "auto"
 
     def validate_s3_bucket(self, bucket: str) -> bool:
         """Validate that a bucket is in the allowed list (if whitelist is configured).

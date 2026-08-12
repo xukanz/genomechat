@@ -130,7 +130,7 @@ def coordinator_node(state: AgentState) -> Command[Literal["orchestrator", "__en
             f"Preserving original user message: {state['messages'][-1].content if state['messages'] else 'No messages'}"
         )
 
-        # Store reasoning and response separately (reasoning as SystemMessage, response as HumanMessage)
+        # Store reasoning and response separately (reasoning as SystemMessage, response as AIMessage)
         # When routing: include reasoning (as "inner thought"), skip response (orchestrator provides it)
         # When responding: include both reasoning and response
         messages_to_add = []
@@ -164,8 +164,20 @@ def coordinator_node(state: AgentState) -> Command[Literal["orchestrator", "__en
             )
             messages_to_add.append(reasoning_message)
 
-        # Add response (as HumanMessage for actual answer)
-        response_message = HumanMessage(content=coordinator_decision.response, name="coordinator")
+        # Add response as an AIMessage — this is the assistant's answer to the
+        # user, so it MUST map to role: assistant.
+        #
+        # It used to be a HumanMessage(name="coordinator"), which LangChain maps
+        # to role: user. On the next turn the coordinator then saw a history made
+        # up entirely of user turns — its own past answers included — and could no
+        # longer tell the user's new question apart from its own previous reply.
+        # In practice it re-answered the PREVIOUS question and offered the actual
+        # new one back as a "suggestion". See test_coordinator_response_role.py.
+        #
+        # Note this is unrelated to the AIMessage → HumanMessage remap in
+        # _prepare_worker_messages: that one is a throwaway copy handed to a
+        # worker LLM, and deliberately never reaches graph state.
+        response_message = AIMessage(content=coordinator_decision.response, name="coordinator")
         messages_to_add.append(response_message)
 
         logger.info("Coordinator responding directly")
@@ -730,4 +742,3 @@ async def sql_agent_node(state: AgentState) -> Command[Literal["orchestrator"]]:
         update={"messages": [HumanMessage(content=sql_content, name="sql_agent")]},
         goto="orchestrator",
     )
-
