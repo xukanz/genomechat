@@ -309,8 +309,15 @@ def build_cmd(job_dir: str, args: Optional[List[str]]) -> List[str]:
     """
     if args is None:
         args = []
-    # Use relative path since we'll set cwd to job_dir
-    return ["python3", "main.py"] + args
+    # sys.executable, not "python3": the interpreter running this server is the
+    # one that has requirements.txt installed. In the Docker image those two
+    # happen to be the same, but the documented local dev setup runs the server
+    # from .venv while bare "python3" resolves to the system interpreter — which
+    # has no matplotlib/numpy/pandas. The agent then either pip-installs them
+    # per job into a directory that is deleted right afterwards, or falls back
+    # to hand-drawing charts with PIL.
+    # Use a relative script path since we set cwd to job_dir.
+    return [sys.executable, "main.py"] + args
 
 
 def set_resource_limits(mem_mb: int = 256, cpu_seconds: int = 3, max_file_size_mb: int = 10, max_files: int = 64):
@@ -350,10 +357,13 @@ def collect_output_files(job_dir: str) -> Dict[str, str]:
         job_dir: Job directory to scan for output files
         
     Returns:
-        Dictionary mapping filename -> base64 content (only for small files not in S3)
+        Dictionary mapping job-relative path -> base64 content (only for small
+        files not in S3). Paths are relative, e.g. "outputs/plots/chart.png".
     """
     output_files = {}
     image_extensions = {'.png', '.jpg', '.jpeg', '.svg', '.pdf', '.gif'}
+    control_files = {"main.py", "s3_helpers.py", "s3_info.json", "s3_results.json"}
+    collectable_extensions = image_extensions | {'.csv'}
     
     # Get list of S3 files from s3_results.json
     s3_results_path = os.path.join(job_dir, "s3_results.json")
@@ -369,30 +379,52 @@ def collect_output_files(job_dir: str) -> Dict[str, str]:
             pass
     
     try:
-        for file_path in Path(job_dir).iterdir():
-            if file_path.is_file() and file_path.name not in ["main.py", "s3_helpers.py", "s3_info.json", "s3_results.json"]:
-                filename = file_path.name
-                
-                # Skip if file is reported in S3
-                if filename in s3_file_keys:
+        # rglob, not iterdir: generated plots routinely land in a subdirectory,
+        # because the agent is told to read its input from outputs/<name>.csv and
+        # writes the chart alongside it under outputs/plots/. A top-level-only
+        # scan dropped those files, and the job dir is deleted immediately after,
+        # so a successfully rendered chart vanished with no error logged anywhere.
+        for file_path in Path(job_dir).rglob("*"):
+            if not file_path.is_file() or file_path.name in control_files:
+                continue
+
+            relative = file_path.relative_to(job_dir)
+
+            # JOBS_DIR is a relative path, so a job whose CWD is its own directory
+            # can end up containing a nested .sandbox_jobs tree. Never let one
+            # job's response carry another job's files.
+            if ".sandbox_jobs" in relative.parts:
+                continue
+
+            # Skip if file is reported in S3
+            if file_path.name in s3_file_keys:
+                continue
+
+            if file_path.suffix.lower() not in collectable_extensions:
+                continue
+
+            try:
+                file_size = file_path.stat().st_size
+                # Only include small files (< 1MB) for base64 embedding.
+                # Large files should be uploaded to S3 instead.
+                if file_size > 1 * 1024 * 1024:  # 1MB limit
+                    logger.warning(
+                        f"[JOB] Not returning {relative}: {file_size} bytes exceeds "
+                        f"the 1MB inline limit. Upload it to S3 to keep it."
+                    )
                     continue
-                
-                # Check if it's an image or other binary file
-                if file_path.suffix.lower() in image_extensions or file_path.suffix.lower() == '.csv':
-                    try:
-                        file_size = file_path.stat().st_size
-                        # Only include small files (< 1MB) for base64 embedding
-                        # Large files should be uploaded to S3 instead
-                        if file_size <= 1 * 1024 * 1024:  # 1MB limit
-                            with open(file_path, "rb") as f:
-                                file_content = f.read()
-                                base64_content = base64.b64encode(file_content).decode('utf-8')
-                                output_files[filename] = base64_content
-                    except Exception:
-                        pass
+
+                with open(file_path, "rb") as f:
+                    base64_content = base64.b64encode(f.read()).decode('utf-8')
+
+                # Key by relative path so nested files keep a distinct, meaningful
+                # name rather than colliding on basename.
+                output_files[relative.as_posix()] = base64_content
+            except Exception:
+                logger.warning(f"[JOB] Could not read output file {relative}", exc_info=True)
     except Exception:
-        pass
-    
+        logger.warning(f"[JOB] Could not scan {job_dir} for output files", exc_info=True)
+
     return output_files
 
 
