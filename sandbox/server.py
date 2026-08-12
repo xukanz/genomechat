@@ -39,6 +39,39 @@ logger.setLevel(logging.INFO)
 for handler in logger.handlers:
     handler.setStream(sys.stderr)
 
+def _load_dotenv_for_local_runs(env_path: Optional[Path] = None) -> None:
+    """Read sandbox/.env when the server is started directly on a host.
+
+    Under Docker Compose this file is delivered as `env_file`, so the values are
+    already in os.environ and nothing here applies. Run the documented local
+    setup instead — `.venv/bin/python server.py` — and nothing was reading the
+    file at all, so editing it had no effect and every AWS variable came back
+    unset with no indication why.
+
+    override=False keeps the existing precedence intact: real environment
+    variables, whether from Compose, a shell export, or Vault, still win.
+
+    Args:
+        env_path: File to read. Defaults to the .env beside this module.
+    """
+    if env_path is None:
+        env_path = Path(__file__).resolve().parent / ".env"
+    if not env_path.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        logger.warning(
+            f"[STARTUP] {env_path} exists but python-dotenv is not installed; "
+            f"export the variables in your shell instead"
+        )
+        return
+    load_dotenv(env_path, override=False)
+    logger.info(f"[STARTUP] Loaded environment from {env_path}")
+
+
+_load_dotenv_for_local_runs()
+
 app = FastAPI(title="Sandboxed Code Runner", version="1.0.0")
 
 # Ensure jobs directory exists at startup

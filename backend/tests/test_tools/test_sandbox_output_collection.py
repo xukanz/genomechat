@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -35,7 +36,10 @@ def sandbox_server(tmp_path_factory):
 
     import os
 
-    previous = os.environ.get("SANDBOX_JOBS_DIR")
+    # Importing the module runs _load_dotenv_for_local_runs against the real
+    # sandbox/.env, so snapshot the environment and put it back afterwards
+    # rather than letting a developer's local credentials leak into other tests.
+    snapshot = dict(os.environ)
     os.environ["SANDBOX_JOBS_DIR"] = str(tmp_path_factory.mktemp("jobs_dir"))
     try:
         spec = importlib.util.spec_from_file_location("sandbox_server", SANDBOX_SERVER)
@@ -43,10 +47,8 @@ def sandbox_server(tmp_path_factory):
         spec.loader.exec_module(module)
         yield module
     finally:
-        if previous is None:
-            os.environ.pop("SANDBOX_JOBS_DIR", None)
-        else:
-            os.environ["SANDBOX_JOBS_DIR"] = previous
+        os.environ.clear()
+        os.environ.update(snapshot)
 
 
 @pytest.fixture
@@ -137,6 +139,50 @@ class TestExclusions:
         (job_dir / "huge.png").write_bytes(b"x" * (1024 * 1024 + 1))
 
         assert "huge.png" not in sandbox_server.collect_output_files(str(job_dir))
+
+
+class TestLocalDotenvLoading:
+    """Running the sandbox directly on a host must still read sandbox/.env.
+
+    Under Docker Compose the file is delivered as `env_file`, so its values are
+    already in os.environ. The documented local setup runs
+    `.venv/bin/python server.py`, where nothing read the file at all: editing it
+    had no effect, every AWS variable came back unset, and the only clue was a
+    debug-endpoint hint telling you to check that Compose was reading it.
+    """
+
+    def test_values_are_loaded_from_the_file(self, sandbox_server, tmp_path, monkeypatch):
+        monkeypatch.delenv("AWS_DEFAULT_BUCKET", raising=False)
+        env_file = tmp_path / ".env"
+        env_file.write_text("AWS_DEFAULT_BUCKET=from-dotenv\n")
+
+        sandbox_server._load_dotenv_for_local_runs(env_file)
+
+        assert os.environ["AWS_DEFAULT_BUCKET"] == "from-dotenv"
+
+    def test_real_environment_wins_over_the_file(self, sandbox_server, tmp_path, monkeypatch):
+        """Compose, shell exports and Vault must keep precedence."""
+        monkeypatch.setenv("AWS_DEFAULT_BUCKET", "from-environment")
+        env_file = tmp_path / ".env"
+        env_file.write_text("AWS_DEFAULT_BUCKET=from-dotenv\n")
+
+        sandbox_server._load_dotenv_for_local_runs(env_file)
+
+        assert os.environ["AWS_DEFAULT_BUCKET"] == "from-environment"
+
+    def test_missing_file_is_a_no_op(self, sandbox_server, tmp_path):
+        sandbox_server._load_dotenv_for_local_runs(tmp_path / "absent.env")
+
+    def test_inline_comments_are_stripped_by_the_parser(
+        self, sandbox_server, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("AWS_S3_ADDRESSING_STYLE", raising=False)
+        env_file = tmp_path / ".env"
+        env_file.write_text("AWS_S3_ADDRESSING_STYLE=auto     # auto | path | virtual\n")
+
+        sandbox_server._load_dotenv_for_local_runs(env_file)
+
+        assert os.environ["AWS_S3_ADDRESSING_STYLE"] == "auto"
 
 
 class TestJobInterpreter:
