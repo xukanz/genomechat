@@ -10,12 +10,12 @@ from src.config.llm import ProviderType
 
 # Define agent-LLM mapping: (provider, model)
 AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
-    "coordinator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "coordinator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
     "orchestrator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-opus-5"),
     "coder": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
     "sql_agent": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
     "researcher": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
-    "summarizer": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "summarizer": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
 }
 # AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
 #     "coordinator": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
