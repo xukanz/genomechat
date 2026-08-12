@@ -69,9 +69,18 @@ class TestContextSettings:
         assert settings.context_tool_clear_keep == 3
 
     def test_summarizer_agent_config(self):
-        """Verify summarizer agent exists in AGENT_LLM_MAP."""
-        from src.config.agents import AGENT_LLM_MAP
+        """Verify the summarizer resolves to a usable provider and model.
+
+        This previously required a Haiku model, on the grounds that history
+        compression runs on every long conversation and should be cheap. That
+        constraint was dropped deliberately when the agents moved to Claude 5,
+        which has no Haiku tier — the summarizer now shares the same model as
+        the workers. Cost is a judgement call rather than an invariant, so only
+        resolvability is asserted here.
+        """
+        from src.config.agents import AGENT_LLM_MAP, resolve_agent_llm_config
 
         assert "summarizer" in AGENT_LLM_MAP
-        provider, model = AGENT_LLM_MAP["summarizer"]
-        assert "haiku" in model.lower()
+        provider, model = resolve_agent_llm_config("summarizer")
+        assert provider
+        assert model
