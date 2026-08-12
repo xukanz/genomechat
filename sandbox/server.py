@@ -486,6 +486,18 @@ def python_exec(job_dir: str, inner_cmd: List[str], stdin_data: str, timeout: in
         "AWS_DEFAULT_REGION": get_env_with_vault("AWS_DEFAULT_REGION", "us-east-1"),
     }
     
+    # Point jobs at a self-hosted S3 server when one is configured. Only forwarded
+    # when non-empty: boto3 treats an empty endpoint_url as a malformed URL rather
+    # than as "unset", which fails every call with a confusing error.
+    aws_endpoint_url = get_env_with_vault("AWS_ENDPOINT_URL", "").strip()
+    if aws_endpoint_url:
+        restricted_env["AWS_ENDPOINT_URL"] = aws_endpoint_url
+        logger.info(f"[ENV] AWS_ENDPOINT_URL is set to {aws_endpoint_url}")
+
+    addressing_style = get_env_with_vault("AWS_S3_ADDRESSING_STYLE", "").strip()
+    if addressing_style:
+        restricted_env["AWS_S3_ADDRESSING_STYLE"] = addressing_style
+
     # Only include AWS_DEFAULT_BUCKET if it's non-empty (from vault secrets or env vars)
     aws_default_bucket = get_env_with_vault("AWS_DEFAULT_BUCKET", "").strip()
     if aws_default_bucket:

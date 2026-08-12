@@ -5,6 +5,7 @@ import threading
 from typing import Optional
 
 import boto3
+from botocore.config import Config
 
 from src.config.settings import settings
 
@@ -45,7 +46,19 @@ def get_s3_client():
 
         kwargs = {
             "region_name": settings.aws_default_region,
+            "config": Config(
+                s3={"addressing_style": settings.s3_addressing_style_resolved},
+            ),
         }
+
+        # Point at a self-hosted, S3-compatible server when one is configured
+        # (MinIO, Ceph, LocalStack). Unset means real AWS.
+        if settings.aws_endpoint_url:
+            kwargs["endpoint_url"] = settings.aws_endpoint_url
+            logger.info(
+                f"S3 client targeting custom endpoint {settings.aws_endpoint_url} "
+                f"(addressing style: {settings.s3_addressing_style_resolved})"
+            )
 
         # Only add explicit credentials if provided (for local dev or explicit credential scenarios)
         if settings.aws_access_key_id and settings.aws_secret_access_key:

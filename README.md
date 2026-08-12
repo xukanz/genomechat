@@ -291,8 +291,37 @@ nothing is persisted, so `/artifacts` stays empty and reopening the conversation
 will not bring the file back. Fine for trying things out; configure S3 for anything
 beyond a couple of charts per conversation.
 
-There is no `endpoint_url` setting, so S3-compatible services such as MinIO need a
-code change in `src/service/s3.py` and `sandbox/s3_helpers.py` before they will work.
+#### Self-hosted S3 (MinIO)
+
+Set `AWS_ENDPOINT_URL` to use an S3-compatible server instead of AWS. MinIO needs
+no account and runs from a single binary:
+
+```bash
+# Download once (Linux x86_64; see https://min.io/download for other platforms)
+curl -fsSLO https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x minio
+
+MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
+  ./minio server ~/.minio-data --console-address :9001
+```
+
+The console is at http://localhost:9001; create a bucket there, then point both
+services at it — `backend/.env` and `sandbox/.env` each need their own copy:
+
+```bash
+AWS_ENDPOINT_URL=http://localhost:9000
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=minioadmin
+AWS_DEFAULT_BUCKET=genomechat
+AWS_DEFAULT_REGION=us-east-1
+```
+
+Addressing style is handled automatically: setting `AWS_ENDPOINT_URL` switches
+boto3 to path-style, because a self-hosted server reached by host:port cannot
+serve `http://<bucket>.localhost:9000`. Override with `AWS_S3_ADDRESSING_STYLE`
+(`auto`, `path`, `virtual`) if your server wants something else.
+
+Under Docker Compose, `localhost` inside a container is that container — use the
+MinIO service name, or `host.docker.internal` when MinIO runs on the host.
 
 ### Development Commands
 
