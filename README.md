@@ -40,7 +40,7 @@ Three database profiles ship by default, all built from public genomics resource
 |---|---|---|---|
 | **clinvar** | [NCBI ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/) variant/condition assertions | SQLite, built locally | Public domain |
 | **gwas** | [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/) associations + studies | Parquet via DuckDB, built locally | CC BY 4.0 |
-| **ensembl** | [Ensembl](https://www.ensembl.org/) human core annotation | Live query against the public MySQL mirror | Open |
+| **ensembl** *(opt-in)* | [Ensembl](https://www.ensembl.org/) human core annotation | Live query against the public MySQL mirror | Open |
 
 Build the two local ones before first run:
 
@@ -53,7 +53,17 @@ This downloads roughly 500 MB of source files into `backend/databases/_raw/` and
 
 Budget about 15 minutes for the first run, most of it download time.
 
-The `ensembl` profile needs no preparation — it queries `ensembldb.ensembl.org:3306` anonymously. Set `DB_REGISTRY_ENSEMBL_ENABLED=false` if you have no outbound access on port 3306.
+The `ensembl` profile needs no build step — it queries `ensembldb.ensembl.org:3306` anonymously — but it is **disabled by default**, so only ClinVar and GWAS appear until you turn it on:
+
+```bash
+DB_REGISTRY_ENSEMBL_ENABLED=true
+```
+
+It ships off because it needs outbound MySQL *protocol* access, which many networks block at the application layer even though the TCP handshake succeeds — the connection opens and is then reset, which is a confusing way to fail. Check before enabling:
+
+```bash
+mysql -h ensembldb.ensembl.org -u anonymous -e 'SELECT VERSION()'
+```
 
 ## 🚀 Key Features
 
