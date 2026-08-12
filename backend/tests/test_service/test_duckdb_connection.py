@@ -207,3 +207,77 @@ class TestDuckDBConnectionIntegration:
         assert df.iloc[0]["name"] == "test"
 
         conn.close()
+
+
+class TestFlatParquetLayout:
+    """Plain `<table>.parquet` files in the data directory.
+
+    This is how the genomics profiles are built. Before flat discovery existed
+    no views were created for them, so the bare table names the schema
+    description advertises — and that `get_random_subsamples` emits — failed
+    with a catalog error while the data sat right there on disk.
+    """
+
+    @pytest.fixture
+    def flat_dir(self, tmp_path):
+        import duckdb
+
+        con = duckdb.connect()
+        for name, n in (("genes", 3), ("exons", 5)):
+            con.execute(
+                f"COPY (SELECT * FROM range({n}) t(id)) "
+                f"TO '{tmp_path / f'{name}.parquet'}' (FORMAT PARQUET)"
+            )
+        con.close()
+        return tmp_path
+
+    def _conn(self, data_path):
+        settings = DatabaseSettings(
+            database_type=DatabaseType.DUCKDB,
+            duckdb_data_path=str(data_path),
+            parquet_glob_pattern="*.parquet",
+            hive_partitioning=False,
+        )
+        conn = DuckDBConnection(settings)
+        conn.data_path = str(data_path)
+        return conn
+
+    def test_discovers_flat_tables(self, flat_dir):
+        assert self._conn(flat_dir)._get_local_tables() == ["exons", "genes"]
+
+    def test_pattern_points_at_the_file(self, flat_dir):
+        pattern = self._conn(flat_dir)._get_local_parquet_pattern("genes")
+        assert pattern.endswith("genes.parquet")
+
+    def test_views_make_bare_table_names_queryable(self, flat_dir):
+        import duckdb
+
+        conn = self._conn(flat_dir)
+        conn.conn = duckdb.connect(":memory:")
+        conn.create_table_views()
+
+        # The whole point: no path, no read_parquet, just the table name.
+        assert conn.conn.execute("SELECT count(*) FROM genes").fetchone()[0] == 3
+        assert conn.conn.execute("SELECT count(*) FROM exons").fetchone()[0] == 5
+        conn.close()
+
+    def test_missing_directory_returns_no_tables(self, tmp_path):
+        # Previously raised FileNotFoundError out of iterdir().
+        assert self._conn(tmp_path / "does_not_exist")._get_local_tables() == []
+
+    def test_empty_directory_returns_no_tables(self, tmp_path):
+        assert self._conn(tmp_path)._get_local_tables() == []
+
+    def test_create_views_raises_when_nothing_is_built(self, tmp_path):
+        """An unbuilt profile must fail loudly, not connect with zero tables.
+
+        The data directory normally exists even when unbuilt because it holds
+        schema_description.yaml, so path resolution cannot catch this.
+        """
+        import duckdb
+
+        conn = self._conn(tmp_path)
+        conn.conn = duckdb.connect(":memory:")
+        with pytest.raises(FileNotFoundError, match="build_genomics_databases"):
+            conn.create_table_views()
+        conn.close()

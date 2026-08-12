@@ -213,6 +213,7 @@ class DuckDBConnection(DatabaseConnection):
         - Enriched (sample_metrics_enriched): data_path/table_name/cohort_type=*/*.parquet
         - Enriched (clonotype_data, gene_usage): data_path/table_name/cohort_type=*/dataset_name=*/*.parquet (via symlinks)
         - Enriched (cohort_summary): data_path/table_name/*.parquet (not partitioned)
+        - Flat: data_path/table_name.parquet
 
         Args:
             table_name: Name of the table
@@ -221,6 +222,12 @@ class DuckDBConnection(DatabaseConnection):
             Local glob pattern with ** support
         """
         local_path = Path(self.data_path)
+
+        # Flat layout, checked first but gated on the file actually being
+        # there, so the partitioned patterns below stay reachable.
+        flat = local_path / f"{table_name}.parquet"
+        if flat.exists():
+            return str(flat)
 
         # Table-specific patterns for enriched database
         enriched_patterns = {
@@ -326,14 +333,26 @@ class DuckDBConnection(DatabaseConnection):
     def _get_local_tables(self) -> list[str]:
         """Discover tables from local Parquet directory structure.
 
-        Handles two patterns:
+        Handles three patterns:
         1. Partition-first: data_path/cohort_type=*/table_name/**/*.parquet
         2. Enriched: data_path/table_name/cohort_type=*/*.parquet
+        3. Flat: data_path/table_name.parquet — the layout the genomics
+           profiles (gwas, ensembl) are built into.
+
+        Without (3) no views are created for a flat profile, so the bare table
+        names the schema description advertises cannot be resolved and
+        ``SELECT ... FROM associations`` fails with a catalog error.
         """
         if self.data_path is None:
             return []
 
         local_path = Path(self.data_path)
+        if not local_path.is_dir():
+            # An unbuilt or misconfigured profile: report no tables rather than
+            # letting iterdir() raise FileNotFoundError.
+            logger.warning("⎄ Data path is not a directory: %s", local_path)
+            return []
+
         tables = set()
 
         # Check if this is the enriched database (contains known enriched tables)
@@ -365,6 +384,14 @@ class DuckDBConnection(DatabaseConnection):
                         parquet_files = list(table_dir.glob("**/*.parquet"))
                         if parquet_files:
                             tables.add(table_dir.name)
+
+        # Pattern 3: flat — plain <table>.parquet files in the data directory.
+        # Only consulted when the partition scan found nothing, so partitioned
+        # and enriched layouts behave exactly as before.
+        if not tables:
+            tables = {p.stem for p in local_path.glob("*.parquet")}
+            if tables:
+                logger.info("⎄ Discovered %d flat Parquet table(s)", len(tables))
 
         return sorted(tables)
 
@@ -484,6 +511,17 @@ class DuckDBConnection(DatabaseConnection):
             raise RuntimeError("Connection not established. Call connect() first.")
 
         tables = self.get_available_tables()
+        if not tables and not self._is_s3:
+            # Surface an unbuilt profile here rather than letting the agent
+            # discover it as a catalog error on its first query. The directory
+            # itself usually exists (it holds schema_description.yaml), so
+            # path resolution alone cannot catch this.
+            raise FileNotFoundError(
+                f"No Parquet tables found under {self.data_path}. Build the "
+                f"dataset first: uv run python "
+                f"scripts/build_genomics_databases.py --download"
+            )
+
         for table_name in tables:
             parquet_expr = self._build_parquet_query(table_name)
             view_sql = f"CREATE OR REPLACE VIEW {table_name} AS SELECT * FROM {parquet_expr}"
