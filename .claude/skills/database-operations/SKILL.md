@@ -267,7 +267,9 @@ result = conn.execute("""
 """).fetchall()
 ```
 
-For immunology-specific query patterns, see the `immunology-domain` skill.
+For per-database query patterns, schema quirks and worked examples, see the
+context files the agents themselves are given:
+`backend/src/prompts/database_context/{clinvar,gwas,ensembl}_context.md`.
 
 ## Query Optimization
 

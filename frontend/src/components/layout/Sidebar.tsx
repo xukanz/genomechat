@@ -72,13 +72,14 @@ const railTabs = [
   { id: "databases", label: "Databases", icon: Database }
 ]
 
-// Database type labels for display
-const getDatabaseTypeLabel = (dbType: string, domain: string): string => {
-  if (domain === "immunology") {
-    if (dbType === "sqlite") return "Immunology Database"
-    if (dbType === "duckdb") return "Clinical Data"
-  }
-  return "Research Database"
+// Database type labels for display.
+// The backend already sends a human-readable domain per profile ("clinical
+// genetics", "statistical genetics", "genome annotation"), so use it rather
+// than mapping storage engines to hardcoded names — a duckdb profile is not
+// inherently any one kind of data.
+const getDatabaseTypeLabel = (domain: string): string => {
+  if (!domain) return "Research Database"
+  return domain.replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 // Mock savedReports removed - now using reportStore
@@ -1296,7 +1297,7 @@ export function Sidebar() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mb-2">
-                      {getDatabaseTypeLabel(db.database_type, db.domain)}
+                      {getDatabaseTypeLabel(db.domain)}
                     </p>
                     <p className="text-sm text-slate-600 leading-relaxed line-clamp-2">{db.description}</p>
                   </button>

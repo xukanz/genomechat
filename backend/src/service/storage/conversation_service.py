@@ -386,10 +386,10 @@ The title should:
 - Be concise (3-8 words maximum)
 
 Examples:
-- "Analyzing TCR diversity patterns"
-- "SQL query for vaccine data"
-- "Comparing immune responses in studies"
-- "Creating visualization of antibody sequences"
+- "Analyzing BRCA1 variant pathogenicity"
+- "SQL query for GWAS associations"
+- "Comparing clinical significance across genes"
+- "Creating visualization of variant density"
 
 Only respond with the title, nothing else."""
 

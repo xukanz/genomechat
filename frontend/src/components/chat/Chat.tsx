@@ -229,7 +229,7 @@ export function Chat() {
               How can I help?
             </h2>
             <p className="text-muted-foreground text-sm pt-1">
-              Ask questions about immunology research, analyze data, or explore scientific literature.
+              Ask questions about genomics research, analyze data, or explore scientific literature.
             </p>
             {/* Database Connection Indicator */}
             {activeDatabase && (

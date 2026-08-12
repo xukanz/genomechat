@@ -12,7 +12,7 @@ SnippetCategory = Literal[
     "data_processing",  # Data cleaning, transformation
     "statistics",  # Statistical analysis patterns
     "file_operations",  # S3, file handling patterns
-    "domain_specific",  # TCR analysis, immunology pipelines
+    "domain_specific",  # Variant interpretation, genomics pipelines
     "custom",  # User-defined
 ]
 
