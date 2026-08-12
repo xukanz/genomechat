@@ -7,7 +7,13 @@ from langchain_core.tools import tool
 
 from src.config.settings import settings
 from src.service.observability import trace_tool
-from src.tools._sandbox_utils import build_sandbox_payload, call_sandbox, format_sandbox_response
+from src.tools._sandbox_utils import (
+    build_sandbox_payload,
+    call_sandbox,
+    describe_http_error,
+    format_sandbox_response,
+    is_client_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +66,17 @@ def _handle_sandbox_error(e: Exception) -> str:
         logger.error("Sandbox request timed out")
         return "Error: Code execution timed out. The code may be taking too long to run."
     elif isinstance(e, httpx.HTTPStatusError):
-        logger.error(f"Sandbox HTTP error: {e.response.status_code}")
-        return f"Error: Sandbox service returned error {e.response.status_code}. Please try again."
+        detail = describe_http_error(e)
+        logger.error(f"Sandbox HTTP error: {detail}")
+        if is_client_error(e):
+            # Tell the agent the request was malformed and why. Without this it
+            # only saw "returned error 422", so it retried the same payload.
+            return (
+                f"Error: the sandbox rejected this request — {detail}. "
+                f"The arguments are malformed, so retrying unchanged will fail the "
+                f"same way. Fix the reported field and call the tool again."
+            )
+        return f"Error: Sandbox service returned error {detail}. Please try again."
     else:
         logger.error(f"Unexpected error executing code: {e}", exc_info=True)
         return f"Error executing code: {str(e)}"

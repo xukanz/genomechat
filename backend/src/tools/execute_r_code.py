@@ -8,7 +8,13 @@ from langchain_core.tools import tool
 
 from src.config.settings import settings
 from src.service.observability import trace_tool
-from src.tools._sandbox_utils import build_sandbox_payload, call_sandbox, format_sandbox_response
+from src.tools._sandbox_utils import (
+    build_sandbox_payload,
+    call_sandbox,
+    describe_http_error,
+    format_sandbox_response,
+    is_client_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +57,15 @@ async def execute_r_code(
         logger.error("R sandbox request timed out")
         return "Error: R code execution timed out. The code may be taking too long to run."
     except httpx.HTTPStatusError as e:
-        logger.error(f"R sandbox HTTP error: {e.response.status_code}")
-        return (
-            f"Error: R sandbox service returned error {e.response.status_code}. Please try again."
-        )
+        detail = describe_http_error(e)
+        logger.error(f"R sandbox HTTP error: {detail}")
+        if is_client_error(e):
+            return (
+                f"Error: the R sandbox rejected this request — {detail}. "
+                f"The arguments are malformed, so retrying unchanged will fail the "
+                f"same way. Fix the reported field and call the tool again."
+            )
+        return f"Error: R sandbox service returned error {detail}. Please try again."
     except Exception as e:
         logger.error(f"Unexpected error executing R code: {e}", exc_info=True)
         return f"Error executing R code: {str(e)}"

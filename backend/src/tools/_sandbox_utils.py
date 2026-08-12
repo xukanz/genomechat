@@ -12,6 +12,40 @@ from src.utils.context import thread_id_context
 logger = logging.getLogger(__name__)
 
 
+def describe_http_error(e: httpx.HTTPStatusError, limit: int = 600) -> str:
+    """Render a sandbox HTTP error as "<status> <body>".
+
+    The body matters: a 422 from the sandbox is FastAPI telling us exactly which
+    field of RunReq failed validation. Reporting the bare status code hid that
+    from the logs AND from the agent, so the agent retried the same malformed
+    payload until the turn ran out of time.
+
+    Args:
+        e: The raised status error.
+        limit: Maximum characters of body detail to keep.
+
+    Returns:
+        Status code, plus the response detail when there is one.
+    """
+    status = e.response.status_code
+    try:
+        body = e.response.json()
+        detail = body.get("detail", body) if isinstance(body, dict) else body
+        text = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
+    except Exception:
+        text = e.response.text
+
+    text = (text or "").strip()
+    if len(text) > limit:
+        text = f"{text[:limit]}… (truncated)"
+    return f"{status} {text}" if text else str(status)
+
+
+def is_client_error(e: httpx.HTTPStatusError) -> bool:
+    """True for 4xx — the request itself is wrong, so retrying it unchanged won't help."""
+    return 400 <= e.response.status_code < 500
+
+
 async def call_sandbox(url: str, timeout: float, payload: dict) -> dict:
     """Call a sandbox service and return the JSON response.
 
