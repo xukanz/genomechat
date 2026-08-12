@@ -1,13 +1,26 @@
 """Tests for MongoDB connection."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 from src.service.database.connections.mongodb_connection import (
     MongoDBConnection,
     get_mongodb_client,
     get_mongodb_database,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_client_singleton():
+    """Clear the class-level client between tests.
+
+    `MongoDBConnection._client` is a process-wide singleton, so a real client
+    created by any earlier test leaks in and `connect()` returns it instead of
+    the patched one.
+    """
+    MongoDBConnection._client = None
+    yield
+    MongoDBConnection._client = None
 
 
 @pytest.fixture
@@ -56,9 +69,6 @@ def test_mongodb_connection_get_database(mock_settings, mock_mongo_client):
     """Test getting database from connection."""
     mock_client, mock_db = mock_mongo_client
 
-    # Reset singleton to ensure fresh test
-    MongoDBConnection._client = None
-
     conn = MongoDBConnection(db_name="test_db")
     db = conn.get_database()
 
@@ -88,9 +98,6 @@ def test_mongodb_connection_singleton(mock_settings, mock_mongo_client):
     """Test that MongoDB client is singleton across instances."""
     mock_client, mock_db = mock_mongo_client
 
-    # Reset singleton
-    MongoDBConnection._client = None
-
     conn1 = MongoDBConnection()
     client1 = conn1.connect()
 
@@ -106,9 +113,6 @@ def test_get_mongodb_client_convenience_function(mock_settings, mock_mongo_clien
     """Test convenience function get_mongodb_client."""
     mock_client, mock_db = mock_mongo_client
 
-    # Reset singleton
-    MongoDBConnection._client = None
-
     client = get_mongodb_client()
     assert client == mock_client
 
@@ -116,9 +120,6 @@ def test_get_mongodb_client_convenience_function(mock_settings, mock_mongo_clien
 def test_get_mongodb_database_convenience_function(mock_settings, mock_mongo_client):
     """Test convenience function get_mongodb_database."""
     mock_client, mock_db = mock_mongo_client
-
-    # Reset singleton
-    MongoDBConnection._client = None
 
     db = get_mongodb_database("test_db")
     assert db == mock_db

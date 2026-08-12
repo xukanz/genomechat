@@ -1,7 +1,7 @@
 """Tests for database tool S3 integration."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 import pandas as pd
 
 from src.tools.database import execute_sql_query_and_save
@@ -28,8 +28,14 @@ def mock_settings():
 
 @pytest.fixture
 def mock_file_storage_service():
-    """Mock FileStorageService."""
-    with patch("src.tools.database.FileStorageService") as mock_service_class:
+    """Mock FileStorageService.
+
+    The tool imports the service lazily inside the function body, so the patch
+    has to land on the defining module rather than on `src.tools.database`.
+    """
+    with patch(
+        "src.service.storage.file_storage_service.FileStorageService"
+    ) as mock_service_class:
         mock_service = MagicMock()
         mock_result = MagicMock()
         mock_result.file_id = "test-file-id"

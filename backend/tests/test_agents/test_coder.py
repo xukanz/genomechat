@@ -9,7 +9,7 @@ from src.agents.coder import create_coder_agent
 @pytest.mark.asyncio
 async def test_create_coder_agent():
     """Test coder agent creation."""
-    with patch("src.agents.coder.get_llm_by_agent") as mock_llm:
+    with patch("src.agents.coder.LLMService.get_llm_by_agent") as mock_llm:
         mock_llm.return_value = MagicMock()
         with patch("src.agents.coder.agents.create_agent") as mock_create:
             mock_create.return_value = MagicMock()
@@ -22,7 +22,7 @@ async def test_create_coder_agent():
 async def test_coder_agent_with_tools():
     """Test coder agent creation with additional tools."""
     mock_tool = MagicMock()
-    with patch("src.agents.coder.get_llm_by_agent") as mock_llm:
+    with patch("src.agents.coder.LLMService.get_llm_by_agent") as mock_llm:
         mock_llm.return_value = MagicMock()
         with patch("src.agents.coder.agents.create_agent") as mock_create:
             mock_create.return_value = MagicMock()

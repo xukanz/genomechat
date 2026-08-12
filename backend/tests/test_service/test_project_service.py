@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-from src.models.project import Project, ProjectCreate, ProjectUpdate
+from src.models.project import ProjectCreate, ProjectUpdate
 from src.service.storage.project_service import ProjectService
 
 
@@ -148,7 +148,50 @@ def test_list_user_projects(project_service):
     assert len(projects) == 2
     assert projects[0].name == "Project 1"
     assert projects[1].name == "All Chats"
-    mock_collection.find.assert_called_once_with({"user_id": "user-123"})
+    # Listing covers owned projects and those shared with the user.
+    mock_collection.find.assert_called_once_with(
+        {"$or": [{"user_id": "user-123"}, {"shares.user_id": "user-123"}]}
+    )
+    assert all(p.is_owner and not p.is_shared for p in projects)
+
+
+def test_list_user_projects_includes_shared(project_service):
+    """Projects owned by someone else are returned flagged as shared, not owned."""
+    mock_collection = project_service.projects_collection
+
+    mock_cursor = MagicMock()
+    mock_cursor.__iter__.return_value = [
+        {
+            "project_id": "proj-shared",
+            "user_id": "owner-999",
+            "name": "Shared With Me",
+            "description": "Owned by someone else",
+            "color": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "is_default": False,
+            "conversation_count": 1,
+            "shares": [
+                {
+                    "user_id": "user-123",
+                    "user_email": "user@example.com",
+                    "user_name": "User",
+                    "shared_by": "owner-999",
+                    "shared_at": datetime.utcnow(),
+                }
+            ],
+        },
+    ]
+    mock_cursor.sort.return_value = mock_cursor
+    mock_collection.find.return_value = mock_cursor
+
+    projects = project_service.list_user_projects("user-123")
+
+    assert len(projects) == 1
+    assert projects[0].is_shared is True
+    assert projects[0].is_owner is False
+    # Share membership is only disclosed to the owner.
+    assert projects[0].shares == []
 
 
 def test_get_project(project_service):
@@ -173,8 +216,12 @@ def test_get_project(project_service):
     assert project is not None
     assert project.id == "proj-123"
     assert project.name == "My Project"
+    assert project.is_owner is True
     mock_collection.find_one.assert_called_once_with(
-        {"project_id": "proj-123", "user_id": "user-456"}
+        {
+            "project_id": "proj-123",
+            "$or": [{"user_id": "user-456"}, {"shares.user_id": "user-456"}],
+        }
     )
 
 
@@ -196,8 +243,12 @@ def test_get_project_unauthorized(project_service):
     project = project_service.get_project("proj-123", "wrong-user")
 
     assert project is None
+    # Neither owner nor sharee, so the access filter matches nothing.
     mock_collection.find_one.assert_called_once_with(
-        {"project_id": "proj-123", "user_id": "wrong-user"}
+        {
+            "project_id": "proj-123",
+            "$or": [{"user_id": "wrong-user"}, {"shares.user_id": "wrong-user"}],
+        }
     )
 
 
@@ -282,7 +333,6 @@ def test_delete_default_project_fails(project_service):
 
 def test_move_conversation_to_project(project_service):
     """Test moving conversation to different project."""
-    mock_projects = project_service.projects_collection
     mock_conversations = project_service.conversations_collection
 
     with (

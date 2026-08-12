@@ -1,9 +1,24 @@
 """Pytest configuration and shared fixtures."""
 
-from typing import Iterator
-from unittest.mock import AsyncMock
+from typing import Any, Iterator
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+def make_mongo_cursor(docs: list[dict[str, Any]]) -> MagicMock:
+    """Build a MagicMock that behaves like a PyMongo cursor over `docs`.
+
+    Services chain `find(...).sort(...).skip(...).limit(...)` before iterating,
+    so every chaining method has to return the same object. A bare MagicMock
+    returns a fresh child mock from `.sort()`, which iterates as empty and
+    makes the assertions silently compare against zero rows.
+    """
+    cursor = MagicMock()
+    cursor.__iter__ = MagicMock(side_effect=lambda: iter(docs))
+    for method in ("sort", "skip", "limit"):
+        getattr(cursor, method).return_value = cursor
+    return cursor
 
 
 @pytest.fixture

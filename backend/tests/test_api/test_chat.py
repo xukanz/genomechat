@@ -1,14 +1,41 @@
 """Tests for chat endpoints."""
 
-import pytest
-from unittest.mock import AsyncMock, patch
+import contextlib
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
 from src.models.api import ChatRequest
 
 client = TestClient(app)
+
+
+@contextlib.contextmanager
+def _mocked_agent(agent: MagicMock):
+    """Patch out the per-request agent compilation and its MongoDB dependencies.
+
+    The chat routes build their agent inside the request: they open a
+    checkpointer, compile `graph_builder` against it, and separately touch
+    `ConversationService` for conversation metadata. All three need stubbing
+    for the endpoint to run without a live MongoDB or LLM.
+    """
+
+    @contextlib.asynccontextmanager
+    async def fake_checkpointer():
+        yield MagicMock()
+
+    with (
+        patch("src.api.routes.chat.create_checkpointer", fake_checkpointer),
+        patch("src.api.routes.chat.graph_builder") as mock_builder,
+        patch(
+            "src.service.storage.conversation_service.ConversationService"
+        ) as mock_conversation_service,
+    ):
+        mock_builder.compile.return_value = agent
+        mock_conversation_service.return_value.get_conversation.return_value = None
+        yield mock_builder
 
 
 @pytest.mark.asyncio
@@ -23,38 +50,45 @@ async def test_health_endpoint():
 
 @pytest.mark.asyncio
 async def test_chat_endpoint():
-    """Test synchronous chat endpoint."""
+    """The synchronous endpoint returns the agent's last message and a thread_id."""
     request = ChatRequest(message="Hello")
-    # Mock agent invocation
-    with patch("src.api.routes.chat.agent") as mock_agent:
-        mock_agent.ainvoke = AsyncMock(
-            return_value={
-                "messages": [type("Message", (), {"content": "Hello! How can I help you?"})()]
-            }
-        )
+    mock_agent = MagicMock()
+    mock_agent.ainvoke = AsyncMock(
+        return_value={"messages": [MagicMock(content="Hello! How can I help you?")]}
+    )
+
+    with _mocked_agent(mock_agent):
         response = client.post("/chat", json=request.model_dump())
-        # Note: This will fail without proper mocking setup
-        # This is a placeholder test structure
-        assert response.status_code in [200, 500]  # 500 if agent not properly mocked
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "Hello! How can I help you?"
+    assert data["thread_id"]
+    mock_agent.ainvoke.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_stream_chat_endpoint():
-    """Test streaming chat endpoint."""
+    """The streaming endpoint emits SSE frames, starting with a thinking event."""
     request = ChatRequest(message="Hello")
-    # Mock agent streaming
-    with patch("src.api.routes.chat.agent") as mock_agent:
 
-        async def mock_stream():
-            yield {
-                "event": "on_chat_model_stream",
-                "data": {"chunk": type("Chunk", (), {"content": "Hello"})()},
-            }
+    async def mock_stream(*_args, **_kwargs):
+        yield {
+            "event": "on_chat_model_stream",
+            "name": "coordinator",
+            "data": {"chunk": MagicMock(content="Hello")},
+        }
 
-        mock_agent.astream_events = AsyncMock(return_value=mock_stream())
+    mock_agent = MagicMock()
+    mock_agent.astream_events = mock_stream
+
+    with _mocked_agent(mock_agent):
         response = client.post("/chat/stream", json=request.model_dump())
-        # Note: Streaming tests require more complex setup
-        assert response.status_code in [200, 500]
+        body = response.text
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert '"type":"thinking"' in body.replace(" ", "")
 
 
 def test_pilot_user_ids_set_parses_csv(monkeypatch):

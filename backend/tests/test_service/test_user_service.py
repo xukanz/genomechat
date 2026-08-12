@@ -1,7 +1,7 @@
 """Tests for user service."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from datetime import datetime
 
 from src.service.auth.user_service import UserService
@@ -44,7 +44,7 @@ def test_create_user_success(user_service):
     # Mock: insert_one succeeds
     mock_collection.insert_one.return_value = None
 
-    user_data = UserCreate(email="test@example.com", name="Test User", password="password123")
+    user_data = UserCreate(email="test@example.com", name="Test User", password="Password123!")
 
     user = user_service.create_user(user_data)
 
@@ -61,7 +61,7 @@ def test_create_user_duplicate_email(user_service):
     # Mock: email already exists
     mock_collection.find_one.return_value = {"user_id": "existing-id", "email": "test@example.com"}
 
-    user_data = UserCreate(email="test@example.com", name="Test User", password="password123")
+    user_data = UserCreate(email="test@example.com", name="Test User", password="Password123!")
 
     with pytest.raises(ValueError, match="Email already registered"):
         user_service.create_user(user_data)
