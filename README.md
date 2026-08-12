@@ -123,7 +123,7 @@ Projects group conversations, own reusable code snippets, and can be shared with
 - `PATCH /projects/{project_id}/snippets/{snippet_id}/toggle` — enable/disable without deleting
 
 #### Artifacts (`/artifacts`)
-Files produced by the coder and SQL agents, tracked in MongoDB and stored in S3.
+Files produced by the coder and SQL agents, tracked in MongoDB and stored in S3. Without S3 configured these endpoints return nothing — see [Generated Files and S3](#generated-files-and-s3).
 
 - `GET /artifacts` — list generated files (filter by thread, project, file type, or content type; paginated)
 - `GET /artifacts/{file_id}/download` — presigned download URL
@@ -187,7 +187,7 @@ Not every tool goes to every agent. The coder gets the file and code-execution t
 - Node.js 18+
 - MongoDB — required, and not only for checkpoints: user accounts, conversations, projects, reports, and file metadata all live there
 - An LLM provider (see Environment Variables)
-- Optional: AWS S3 for generated files, R for the R sandbox
+- Optional: AWS S3 for generated files (see [Generated Files and S3](#generated-files-and-s3) for what you lose without it), R for the R sandbox
 
 ### Backend Setup
 
@@ -224,10 +224,15 @@ npm run dev                     # http://localhost:5173
 cd sandbox
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-SANDBOX_JOBS_DIR=./.sandbox_jobs python server.py    # http://localhost:8080
+SANDBOX_JOBS_DIR=./.sandbox_jobs .venv/bin/python server.py    # http://localhost:8080
 ```
 
 `SANDBOX_JOBS_DIR` is only needed outside Docker — in a container the default `/sandbox/jobs` tmpfs mount is used.
+
+Launch with `.venv/bin/python`, not a bare `python`. Jobs run under the same
+interpreter as the server, so starting it with the system Python gives the agent
+a sandbox with no matplotlib, numpy, or pandas — it will then try to `pip install`
+them on every single job, into a directory that is deleted as soon as the job ends.
 
 ### Docker Compose (Full Stack)
 
@@ -238,7 +243,7 @@ cd docker
 docker compose up -d
 ```
 
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3100
 - Backend: http://localhost:8000
 - Python sandbox: http://localhost:8080
 - R sandbox: http://localhost:8081
@@ -255,6 +260,39 @@ MONGODB_CONNECTION_STRING=mongodb://localhost:27017
 ```
 
 Plus credentials for whichever LLM provider `backend/src/config/agents.py` targets. `src/service/llm.py` supports direct Anthropic and OpenAI as well as gateway-fronted Azure, Bedrock, and GCP.
+
+### Generated Files and S3
+
+S3 is the artifact store for everything the agents produce: charts from the coder,
+result CSVs from the SQL agent, and anything else written during code execution.
+Records land in the MongoDB `files` collection and are served through `/artifacts`
+as presigned URLs.
+
+```bash
+AWS_ACCESS_KEY_ID=...          # omit both keys to use the boto3 default chain
+AWS_SECRET_ACCESS_KEY=...      # (IAM role, instance profile, ~/.aws/credentials)
+AWS_SESSION_TOKEN=...          # only for temporary credentials
+AWS_DEFAULT_REGION=us-east-1   # default
+AWS_DEFAULT_BUCKET=my-bucket   # required for uploads to happen at all
+ALLOWED_S3_BUCKETS=a,b         # optional whitelist; unset means any bucket
+```
+
+Both services need these. The backend reads them via `settings` (`src/service/s3.py`),
+and the sandbox injects its own copy into each job's restricted environment
+(`sandbox/server.py`), so code running in the sandbox can upload directly.
+`AWS_DEFAULT_BUCKET` is only passed through when non-empty — an empty value is
+logged and dropped, which reads in the log as `[ENV] AWS_DEFAULT_BUCKET is not set`.
+
+**Running without S3 works, with real limits.** Files fall back to inline base64 in
+the tool result. The sandbox caps that at 1 MB per file and drops anything larger
+(logged as `Not returning <path>`), the payload is spent from the agent's context
+window — a 95 KB chart is roughly 127,000 base64 characters, about 32K tokens — and
+nothing is persisted, so `/artifacts` stays empty and reopening the conversation
+will not bring the file back. Fine for trying things out; configure S3 for anything
+beyond a couple of charts per conversation.
+
+There is no `endpoint_url` setting, so S3-compatible services such as MinIO need a
+code change in `src/service/s3.py` and `sandbox/s3_helpers.py` before they will work.
 
 ### Development Commands
 
