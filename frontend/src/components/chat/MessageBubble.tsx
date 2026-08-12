@@ -9,6 +9,7 @@ import { AgentActivityPanel } from "./AgentActivityPanel"
 import { useConversationStore } from "../../store/conversationStore"
 import { useReportStore } from "../../store/reportStore"
 import { useFeedbackStore } from "../../store/feedbackStore"
+import { markdownUrlTransform } from "../../lib/markdownUrl"
 import type { Message } from "../../hooks/useChat"
 import type { FeedbackType } from "../../types/feedback"
 
@@ -47,7 +48,11 @@ function MarkdownContent({ content }: { content?: string }) {
 
     return (
         <div className="prose prose-slate max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:p-0">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents as any}>
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents as any}
+                urlTransform={markdownUrlTransform}
+            >
                 {content}
             </ReactMarkdown>
         </div>

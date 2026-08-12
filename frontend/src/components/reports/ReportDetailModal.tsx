@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { ExternalLink, Calendar, Copy, Check } from "lucide-react"
 import { Button } from "../ui/button"
+import { markdownUrlTransform } from "../../lib/markdownUrl"
 import {
     Dialog,
     DialogContent,
@@ -80,7 +81,10 @@ export function ReportDetailModal({
 
                 <div className="flex-1 overflow-y-auto py-4">
                     <div className="prose prose-slate max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:p-0">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            urlTransform={markdownUrlTransform}
+                        >
                             {report.content}
                         </ReactMarkdown>
                     </div>
