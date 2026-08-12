@@ -54,6 +54,39 @@ GWAS_BASE = "https://ftp.ebi.ac.uk/pub/databases/gwas/releases/latest"
 GWAS_ASSOC_ZIP = "gwas-catalog-associations_ontology-annotated-full.zip"
 GWAS_STUDIES_TSV = "gwas-catalog-studies.tsv"
 
+# Ensembl ships one GTF per release and the release number is baked into the
+# filename, so there is no stable "current" URL to build against. Pinning also
+# keeps the row counts quoted in the schema description honest — bump this and
+# rebuild rather than silently tracking upstream.
+ENSEMBL_RELEASE = "116"
+ENSEMBL_ASSEMBLY = "GRCh38"
+
+
+def _ensembl_urls(release: str) -> tuple[str, str]:
+    """Return (gtf_url, fasta_index_url) for an Ensembl release.
+
+    The FASTA index is only read for its sequence lengths, which the GTF does
+    not carry — without it, "genes per megabase" is unanswerable.
+    """
+    base = f"https://ftp.ensembl.org/pub/release-{release}"
+    gtf = (
+        f"{base}/gtf/homo_sapiens/"
+        f"Homo_sapiens.{ENSEMBL_ASSEMBLY}.{release}.gtf.gz"
+    )
+    fai = (
+        f"{base}/fasta/homo_sapiens/dna_index/"
+        f"Homo_sapiens.{ENSEMBL_ASSEMBLY}.dna.toplevel.fa.gz.fai"
+    )
+    return gtf, fai
+
+
+def _ensembl_raw_paths(release: str) -> tuple[Path, Path]:
+    """Local names for the Ensembl sources. Release-tagged so a bump refetches."""
+    return (
+        RAW_DIR / f"Homo_sapiens.{ENSEMBL_ASSEMBLY}.{release}.gtf.gz",
+        RAW_DIR / f"Homo_sapiens.{ENSEMBL_ASSEMBLY}.{release}.dna.toplevel.fa.gz.fai",
+    )
+
 # Columns kept from variant_summary.txt. The full file has 39; these are the
 # ones the schema description exposes and the SQL agent can reason about.
 CLINVAR_COLUMNS = [
@@ -220,12 +253,16 @@ def _fetch(url: str, dest: Path, attempts: int = 6) -> None:
     log(f"  saved {dest.name} ({dest.stat().st_size / 1e6:.1f} MB)")
 
 
-def download_sources() -> None:
+def download_sources(ensembl_release: str = ENSEMBL_RELEASE) -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     log("Downloading public source files...")
     _fetch(CLINVAR_URL, RAW_DIR / "clinvar_variant_summary.txt.gz")
     _fetch(f"{GWAS_BASE}/{GWAS_ASSOC_ZIP}", RAW_DIR / "gwas-assoc.zip")
     _fetch(f"{GWAS_BASE}/{GWAS_STUDIES_TSV}", RAW_DIR / GWAS_STUDIES_TSV)
+    gtf_url, fai_url = _ensembl_urls(ensembl_release)
+    gtf_dest, fai_dest = _ensembl_raw_paths(ensembl_release)
+    _fetch(gtf_url, gtf_dest)
+    _fetch(fai_url, fai_dest)
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +430,250 @@ def build_gwas() -> Path:
     return out_dir
 
 
+# ---------------------------------------------------------------------------
+# Ensembl GTF -> Parquet
+# ---------------------------------------------------------------------------
+
+# Everything else in GRCh38 is an unplaced scaffold, patch or alt haplotype.
+# Genes on those are kept — dropping them would make COUNT(*) disagree with
+# Ensembl's published gene count — but flagged so per-chromosome queries can
+# exclude them.
+PRIMARY_CHROMOSOMES = (
+    *(str(i) for i in range(1, 23)),
+    "X",
+    "Y",
+    "MT",
+)
+_PRIMARY_SQL = ", ".join(f"'{c}'" for c in PRIMARY_CHROMOSOMES)
+
+
+def build_ensembl(
+    gtf_path: Path | None = None,
+    fai_path: Path | None = None,
+    out_dir: Path | None = None,
+    scratch_path: Path | None = None,
+    release: str = ENSEMBL_RELEASE,
+) -> Path:
+    """Parse an Ensembl GTF into four Parquet tables.
+
+    Unlike the other builders this one takes explicit paths so it can be
+    exercised against a synthetic GTF in tests. All default to the usual
+    locations.
+
+    Deliberate divergences from ``build_gwas``:
+
+    * Real integer types instead of ``all_varchar``. The GWAS TSVs mix free
+      text into numeric fields; a GTF is machine-generated and regular, so the
+      agent never needs TRY_CAST and range predicates can prune row groups.
+    * CDS and UTR records are folded into derived transcript columns rather
+      than becoming tables. Per-exon coding rows make "how long is the CDS" a
+      GROUP BY that is easy to get silently wrong.
+    """
+    try:
+        import duckdb
+    except ImportError:
+        sys.exit("duckdb not installed — run `uv sync` in backend/")
+
+    default_gtf, default_fai = _ensembl_raw_paths(release)
+    gtf_path = gtf_path or default_gtf
+    fai_path = fai_path or default_fai
+    out_dir = out_dir or (DB_ROOT / "ensembl")
+    scratch_path = scratch_path or (RAW_DIR / f"ensembl_gtf_features_{release}.parquet")
+
+    for src in (gtf_path, fai_path):
+        if not src.exists():
+            sys.exit(f"missing {src} — run with --download first")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    scratch_path.parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect()
+
+    # Stage 0 — the only pass over the gzipped GTF. Decompression is
+    # single-threaded, so the later stages read this columnar scratch file
+    # instead of re-scanning the source four times.
+    log(f"Parsing Ensembl {release} GTF (this is the slow part)...")
+    con.execute(
+        f"""
+        COPY (
+          SELECT
+            seqname AS chromosome,
+            source,
+            feature,
+            CAST(start AS INTEGER) AS start,
+            CAST("end" AS INTEGER) AS "end",
+            strand,
+            regexp_extract(attributes, 'gene_id "([^"]*)"', 1) AS gene_id,
+            TRY_CAST(regexp_extract(attributes, 'gene_version "([^"]*)"', 1)
+                     AS INTEGER) AS gene_version,
+            nullif(regexp_extract(attributes, 'gene_name "([^"]*)"', 1), '')
+              AS gene_name,
+            regexp_extract(attributes, 'gene_biotype "([^"]*)"', 1) AS gene_biotype,
+            nullif(regexp_extract(attributes, 'transcript_id "([^"]*)"', 1), '')
+              AS transcript_id,
+            nullif(regexp_extract(attributes, 'transcript_name "([^"]*)"', 1), '')
+              AS transcript_name,
+            nullif(regexp_extract(attributes, 'transcript_biotype "([^"]*)"', 1), '')
+              AS transcript_biotype,
+            nullif(regexp_extract(attributes, 'exon_id "([^"]*)"', 1), '') AS exon_id,
+            TRY_CAST(regexp_extract(attributes, 'exon_number "([^"]*)"', 1)
+                     AS INTEGER) AS exon_number,
+            nullif(regexp_extract(attributes, 'protein_id "([^"]*)"', 1), '')
+              AS protein_id,
+            nullif(regexp_extract(attributes, 'ccds_id "([^"]*)"', 1), '') AS ccds_id,
+            -- TSL is sometimes '1 (assigned to previous version 3)'; the
+            -- character class stops at the space so only the level survives.
+            nullif(regexp_extract(
+              attributes, 'transcript_support_level "([^" (]*)', 1), '')
+              AS transcript_support_level,
+            -- `tag` repeats within one attribute string, so regexp_extract
+            -- would only ever see the first one. Substring match instead.
+            attributes LIKE '%tag "Ensembl_canonical"%' AS is_canonical,
+            attributes LIKE '%tag "MANE_Select"%'       AS is_mane_select,
+            attributes LIKE '%tag "gencode_basic"%'     AS is_gencode_basic
+          FROM read_csv(
+            '{gtf_path}',
+            delim='\t', header=false, comment='#',
+            -- The attributes column is full of literal double quotes; without
+            -- quote='' the reader treats them as field quoting and mangles it.
+            quote='',
+            -- Required explicitly: supplying `columns` does NOT disable the
+            -- sniffer, and sniffing a headerless 9-column file with quoting
+            -- turned off fails outright.
+            auto_detect=false,
+            columns={{
+              'seqname':'VARCHAR','source':'VARCHAR','feature':'VARCHAR',
+              'start':'BIGINT','end':'BIGINT','score':'VARCHAR',
+              'strand':'VARCHAR','frame':'VARCHAR','attributes':'VARCHAR'
+            }}
+          )
+          WHERE feature IN ('gene','transcript','exon','CDS')
+        ) TO '{scratch_path}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """
+    )
+    con.execute(f"CREATE OR REPLACE VIEW gtf AS SELECT * FROM '{scratch_path}'")
+
+    exons_out = out_dir / "exons.parquet"
+    transcripts_out = out_dir / "transcripts.parquet"
+    genes_out = out_dir / "genes.parquet"
+    chroms_out = out_dir / "chromosomes.parquet"
+
+    # ORDER BY chromosome, start on every table gives Parquet row groups tight
+    # min/max stats, so coordinate-range filters prune instead of full-scanning.
+    log("  exons...")
+    con.execute(
+        f"""
+        COPY (
+          SELECT exon_id, transcript_id, gene_id, exon_number,
+                 chromosome, start, "end",
+                 ("end" - start + 1)::INTEGER AS length, strand
+          FROM gtf WHERE feature = 'exon'
+          ORDER BY chromosome, start
+        ) TO '{exons_out}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """
+    )
+
+    log("  transcripts...")
+    con.execute(
+        """
+        CREATE OR REPLACE TEMP TABLE cds_agg AS
+        SELECT transcript_id,
+               any_value(protein_id)           AS protein_id,
+               SUM("end" - start + 1)::INTEGER AS cds_length,
+               MIN(start)::INTEGER             AS cds_start,
+               MAX("end")::INTEGER             AS cds_end
+        FROM gtf WHERE feature = 'CDS' GROUP BY 1
+        """
+    )
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE exon_agg AS
+        SELECT transcript_id,
+               COUNT(*)::INTEGER    AS exon_count,
+               SUM(length)::INTEGER AS spliced_length
+        FROM '{exons_out}' GROUP BY 1
+        """
+    )
+    con.execute(
+        f"""
+        COPY (
+          SELECT t.transcript_id, t.gene_id, t.gene_name, t.transcript_name,
+                 t.transcript_biotype, t.chromosome, t.start, t."end", t.strand,
+                 (t."end" - t.start + 1)::INTEGER AS genomic_length,
+                 e.exon_count, e.spliced_length,
+                 c.cds_length, c.cds_start, c.cds_end, c.protein_id,
+                 t.transcript_support_level, t.ccds_id,
+                 t.is_canonical, t.is_mane_select, t.is_gencode_basic,
+                 t.source AS transcript_source,
+                 t.chromosome IN ({_PRIMARY_SQL}) AS is_primary_chromosome
+          FROM gtf t
+          LEFT JOIN exon_agg e USING (transcript_id)
+          LEFT JOIN cds_agg  c USING (transcript_id)
+          WHERE t.feature = 'transcript'
+          ORDER BY t.chromosome, t.start
+        ) TO '{transcripts_out}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """
+    )
+
+    log("  genes...")
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE tx_agg AS
+        SELECT gene_id,
+               COUNT(*)::INTEGER AS transcript_count,
+               COUNT(*) FILTER (WHERE transcript_biotype = 'protein_coding')::INTEGER
+                 AS coding_transcript_count,
+               any_value(transcript_id) FILTER (WHERE is_canonical)
+                 AS canonical_transcript_id,
+               any_value(transcript_id) FILTER (WHERE is_mane_select)
+                 AS mane_select_transcript_id
+        FROM '{transcripts_out}' GROUP BY 1
+        """
+    )
+    con.execute(
+        f"""
+        COPY (
+          SELECT g.gene_id, g.gene_version, g.gene_name, g.gene_biotype,
+                 g.source AS gene_source,
+                 g.chromosome, g.start, g."end", g.strand,
+                 (g."end" - g.start + 1)::INTEGER AS genomic_length,
+                 COALESCE(a.transcript_count, 0)        AS transcript_count,
+                 COALESCE(a.coding_transcript_count, 0) AS coding_transcript_count,
+                 a.canonical_transcript_id, a.mane_select_transcript_id,
+                 g.chromosome IN ({_PRIMARY_SQL}) AS is_primary_chromosome
+          FROM gtf g LEFT JOIN tx_agg a USING (gene_id)
+          WHERE g.feature = 'gene'
+          ORDER BY g.chromosome, g.start
+        ) TO '{genes_out}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """
+    )
+
+    log("  chromosomes...")
+    con.execute(
+        f"""
+        COPY (
+          SELECT f.name AS chromosome, f.length,
+                 f.name IN ({_PRIMARY_SQL}) AS is_primary_chromosome
+          FROM read_csv(
+            '{fai_path}', delim='\t', header=false, null_padding=true,
+            columns={{'name':'VARCHAR','length':'BIGINT','offset':'BIGINT',
+                     'linebases':'BIGINT','linewidth':'BIGINT'}}
+          ) f
+          WHERE f.name IN (SELECT DISTINCT chromosome FROM '{genes_out}')
+          ORDER BY is_primary_chromosome DESC, f.length DESC
+        ) TO '{chroms_out}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """
+    )
+
+    for f in sorted(out_dir.glob("*.parquet")):
+        n = con.execute(f"SELECT count(*) FROM '{f}'").fetchone()[0]
+        log(f"  {f.name}: {n:,} rows, {f.stat().st_size / 1e6:.1f} MB")
+        if n == 0:
+            sys.exit(f"{f.name} is empty — the GTF parse produced nothing")
+
+    con.close()
+    return out_dir
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--download", action="store_true", help="fetch source files first")
@@ -403,14 +684,22 @@ def main() -> None:
     )
     ap.add_argument("--skip-clinvar", action="store_true")
     ap.add_argument("--skip-gwas", action="store_true")
+    ap.add_argument("--skip-ensembl", action="store_true")
+    ap.add_argument(
+        "--ensembl-release",
+        default=ENSEMBL_RELEASE,
+        help="Ensembl release to build from (default: %(default)s)",
+    )
     args = ap.parse_args()
 
     if args.download:
-        download_sources()
+        download_sources(ensembl_release=args.ensembl_release)
     if not args.skip_clinvar:
         build_clinvar(full=args.clinvar_full)
     if not args.skip_gwas:
         build_gwas()
+    if not args.skip_ensembl:
+        build_ensembl(release=args.ensembl_release)
     log("\nDone.")
 
 

@@ -93,11 +93,13 @@ docs/future
 # Genomics data files
 # Raw downloads from NCBI / EBI — rebuild with scripts/build_genomics_databases.py --download
 backend/databases/_raw/
-# Built artifacts — both are regenerated from the raw sources by
+# Built artifacts — all three are regenerated from the raw sources by
 # scripts/build_genomics_databases.py and are far too large to version
-# (ClinVar SQLite lands at ~1.7 GB, GWAS Parquet at a few hundred MB).
+# (ClinVar SQLite lands at ~1.7 GB, GWAS Parquet at a few hundred MB,
+# Ensembl Parquet at ~40 MB).
 backend/databases/gwas/*.parquet
 backend/databases/clinvar/*.db
+backend/databases/ensembl/*.parquet
 
 # Development-process assets (PRDs, plans, decision records, spike notes).
 # Kept locally; not part of the published repository.
