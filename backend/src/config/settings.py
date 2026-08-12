@@ -347,6 +347,20 @@ class Settings(BaseSettings):
         "Can be absolute or relative to working directory.",
     )
 
+    # —— Literature search (Europe PMC) ——
+    # Public REST API: no key, no registration, nothing to configure.
+    # Docs: https://europepmc.org/RestfulWebService
+    europepmc_api_url: str = Field(
+        default="https://www.ebi.ac.uk/europepmc/webservices/rest",
+        description="Europe PMC REST API base URL (no trailing slash)",
+    )
+    europepmc_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        description="Per-request timeout for Europe PMC calls",
+    )
+
     # SSL Certificate Configuration
     ssl_cert_path: str | None = Field(
         None,

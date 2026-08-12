@@ -346,6 +346,7 @@ async def stream_chat(
                             "orchestrator": "Orchestrator",
                             "coder": "Coder",
                             "sql_agent": "SQL Agent",
+                            "researcher": "Researcher",
                         }
 
                         # Filter: Only process top-level graph nodes, ignore subgraph internal nodes
@@ -353,7 +354,7 @@ async def stream_chat(
                         # Subgraph internal nodes have different names (e.g., process_agent_result, validate_sql)
                         is_top_level_node = node_name in agent_name_map
 
-                        worker_nodes = ["sql_agent", "coder"]
+                        worker_nodes = ["sql_agent", "researcher", "coder"]
 
                         # Emit agent_start when worker nodes START
                         # This provides observability: agent_start → agent_end → show response

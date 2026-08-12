@@ -47,6 +47,7 @@ const AGENT_NAME_MAP: Record<string, string> = {
   coder: 'Coder',
   sql_agent: 'SQL Agent',
   sqlagent: 'SQL Agent',
+  researcher: 'Researcher',
   planner: 'Planner',
   analyst: 'Analyst',
   data_analyst: 'Data Analyst',
@@ -259,7 +260,7 @@ export function useChat() {
           currentAssistant = null
         }
 
-        const workerAgents = new Set(['coder', 'sql_agent', 'sqlagent', 'data_analyst', 'analyst'])
+        const workerAgents = new Set(['coder', 'sql_agent', 'sqlagent', 'researcher', 'data_analyst', 'analyst'])
 
         const hasUpcomingWorkerMessage = (startIdx: number) => {
           for (let i = startIdx + 1; i < history.messages.length; i += 1) {

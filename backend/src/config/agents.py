@@ -14,6 +14,7 @@ AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
     "orchestrator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-opus-4-6-v1"),
     "coder": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
     "sql_agent": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
+    "researcher": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
     "summarizer": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
 }
 # AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {

@@ -59,12 +59,13 @@ The `ensembl` profile needs no preparation — it queries `ensembldb.ensembl.org
 
 ### Multi-Agent System
 
-Built with LangGraph. Four nodes make up the top-level graph: every request enters at the coordinator, and the worker nodes always hand control back to the orchestrator.
+Built with LangGraph. Five nodes make up the top-level graph: every request enters at the coordinator, and the worker nodes always hand control back to the orchestrator.
 
 - **Coordinator** — routes incoming queries; small talk gets answered directly, real work is handed off
 - **Orchestrator** — plans and coordinates multi-step tasks, then synthesises the final answer
 - **Coder** — generates and executes Python or R in a sandboxed service
 - **SQL Agent** — schema-aware SQL generation with a validation and safety pipeline
+- **Researcher** — searches scientific literature through the public [Europe PMC](https://europepmc.org/) API
 
 The **Summarizer** is not a node but a `SummarizationMiddleware` on the orchestrator, running on its own (cheaper) model to compress the history when the context window fills.
 
@@ -171,6 +172,8 @@ Interactive docs are served at `/docs` (Swagger UI) and `/redoc`.
 **Files** — `list_files_by_thread`, `list_files_by_type`, `read_file_from_s3`, `list_s3_files`
 
 **Code execution** — `execute_code` (Python), `execute_r_code` (R)
+
+**Research** — `search_literature`, `search_by_doi`, `get_paper_citations`, `get_literature_stats`
 
 **Planning** — `manage_plan`, the orchestrator's todo list; its updates are streamed to the UI as plan events
 
@@ -389,3 +392,6 @@ uv run pytest tests/test_config/test_database_registry.py -v
 Built with [LangGraph](https://github.com/langchain-ai/langgraph), [LangChain](https://github.com/langchain-ai/langchain), FastAPI, and React.
 
 Data courtesy of [NCBI ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/), the [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/), and [Ensembl](https://www.ensembl.org/).
+
+Literature search is powered by [Europe PMC](https://europepmc.org/), an open
+literature database developed and operated by EMBL-EBI.

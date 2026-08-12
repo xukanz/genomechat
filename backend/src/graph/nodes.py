@@ -12,6 +12,7 @@ from src.graph.state import AgentState
 from src.graph.types import CoordinatorResponse
 from src.agents.coder import create_coder_agent
 from src.agents.sql import get_sql_agent
+from src.agents.researcher import create_researcher_agent
 from src.agents.orchestrator import get_orchestrator_agent
 from src.service.llm import LLMService
 from src.service.observability import trace_node
@@ -191,6 +192,7 @@ async def orchestrator_node(
     Union[
         Literal["coder"],
         Literal["sql_agent"],
+        Literal["researcher"],
         Literal["__end__"],
     ]
 ]:
@@ -226,7 +228,7 @@ async def orchestrator_node(
     if state["messages"]:
         last_message = state["messages"][-1]
         message_name = getattr(last_message, "name", None)
-        if message_name in ["coder", "sql_agent"]:
+        if message_name in ["researcher", "coder", "sql_agent"]:
             logger.info(
                 f"🔍 Orchestrator: Detected worker completion - Agent '{message_name}' just finished"
             )
@@ -383,7 +385,7 @@ async def orchestrator_node(
                 logger.info(
                     f"Orchestrator: ✅ Successfully marked {completed_after - completed_before} step(s) as completed"
                 )
-            elif message_name in ["coder", "sql_agent"]:
+            elif message_name in ["researcher", "coder", "sql_agent"]:
                 logger.warning(
                     f"Orchestrator: ⚠️ Worker '{message_name}' completed but NO steps were marked as completed!"
                 )
@@ -435,7 +437,7 @@ async def orchestrator_node(
             # auto-complete it to prevent infinite loops (LLM forgot to call manage_plan)
             # NOTE: Only auto-complete 'in_progress' steps, NOT 'pending' ones.
             # 'in_progress' = was actively routed to worker, 'pending' = waiting to be executed
-            if message_name in ["coder", "sql_agent"]:
+            if message_name in ["researcher", "coder", "sql_agent"]:
                 # Check if the worker signaled failure (⚠️ TASK FAILED marker)
                 last_msg_content = getattr(state["messages"][-1], "content", "")
                 worker_failed = "TASK FAILED" in last_msg_content
@@ -489,7 +491,7 @@ async def orchestrator_node(
 
                 if next_step:
                     # Validate agent_name is a valid worker
-                    valid_workers = {"coder", "sql_agent"}
+                    valid_workers = {"researcher", "coder", "sql_agent"}
                     if next_step.agent_name not in valid_workers:
                         logger.error(
                             f"Orchestrator: Invalid agent_name '{next_step.agent_name}' in plan step - must be one of {valid_workers}"
@@ -740,5 +742,43 @@ async def sql_agent_node(state: AgentState) -> Command[Literal["orchestrator"]]:
 
     return Command(
         update={"messages": [HumanMessage(content=sql_content, name="sql_agent")]},
+        goto="orchestrator",
+    )
+
+
+@trace_node("researcher")
+async def researcher_node(state: AgentState) -> Command[Literal["orchestrator"]]:
+    """Node for the researcher agent that searches scientific literature."""
+    logger.info("Researcher agent starting task")
+
+    researcher_agent = create_researcher_agent()
+
+    # Remap orchestrator AIMessages → HumanMessages so the researcher LLM reads
+    # them as instructions rather than as its own past output.
+    worker_state = _prepare_worker_messages(state)
+
+    result = await researcher_agent.ainvoke(
+        worker_state,
+        config={"metadata": {"agent_name": "Researcher"}},
+    )
+
+    logger.info("Researcher agent completed task")
+
+    messages = result.get("messages", [])
+    researcher_content = messages[-1].content if messages else ""
+    logger.debug(f"Researcher agent response: {str(researcher_content)[:200]}...")
+
+    # Signal failure clearly so the orchestrator knows the researcher did NOT succeed
+    if not str(researcher_content).strip():
+        logger.warning("⚠️  Researcher returned empty message - signaling failure to orchestrator")
+        researcher_content = (
+            "⚠️ RESEARCHER TASK FAILED: The researcher agent did not produce any output. "
+            "No literature was searched and no results were generated. "
+            "The orchestrator should either retry with clearer instructions "
+            "or report this step as incomplete."
+        )
+
+    return Command(
+        update={"messages": [HumanMessage(content=researcher_content, name="researcher")]},
         goto="orchestrator",
     )

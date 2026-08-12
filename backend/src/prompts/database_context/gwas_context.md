@@ -49,7 +49,7 @@ Grouped by what they're for:
 | Column | Notes |
 |---|---|
 | `"STUDY ACCESSION"` | GCST accession. Present only on this table — **not** a join key to `studies` |
-| `"PUBMEDID"` | PubMed ID. The join key to `studies`, and the natural handoff to the literature-search tools |
+| `"PUBMEDID"` | PubMed ID. The join key to `studies`, and a direct handoff to the literature tools — see below |
 | `"FIRST AUTHOR"`, `"DATE"`, `"JOURNAL"`, `"LINK"`, `"STUDY"` | Publication metadata |
 | `"DATE ADDED TO CATALOG"` | Curation date, not publication date |
 
@@ -252,3 +252,13 @@ p-value threshold used varies by era and study design.
 Because every row carries `"PUBMEDID"`, every association stays traceable to
 its source publication — carry the PubMed ID through into results so the
 underlying paper can be looked up.
+
+A `"PUBMEDID"` is a literature-tool identifier as-is, with no lookup or
+conversion step in between:
+
+- `search_literature(query="", filters={"pmids": ["29059683", "30926974"]})`
+  fetches the papers behind a batch of associations in one call.
+- `get_paper_citations(paper_id="29059683", direction="citations")` finds work
+  published since that study — replications, contradictions, meta-analyses.
+
+That is the intended route from a catalogue row to the evidence around it.

@@ -19,6 +19,7 @@ from src.graph.nodes import (
     orchestrator_node,
     coder_node,
     sql_agent_node,
+    researcher_node,
 )
 
 
@@ -28,7 +29,7 @@ def build_graph():
     Architecture:
     - START -> coordinator (initial routing)
     - coordinator -> orchestrator (complex queries) or __end__ (simple responses)
-    - orchestrator -> workers (coder, sql_agent) or __end__ (complete)
+    - orchestrator -> workers (coder, sql_agent, researcher) or __end__ (complete)
     - workers -> orchestrator (loop back for coordination)
 
     The orchestrator uses middleware for planning and structured output for routing.
@@ -44,6 +45,7 @@ def build_graph():
     builder.add_node("orchestrator", orchestrator_node)
     builder.add_node("coder", coder_node)
     builder.add_node("sql_agent", sql_agent_node)
+    builder.add_node("researcher", researcher_node)
 
     # Add edges
     builder.add_edge(START, "coordinator")
