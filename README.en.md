@@ -15,6 +15,11 @@ A full-stack, multi-agent platform for genomics research. Ask a question in plai
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 
+### [🚀 Try the live demo →](https://xukanz.github.io/genomechat/)
+
+The full frontend walkthrough: landing → login → chat, with worked examples and charts.
+**No backend, no sign-up** — it runs entirely in your browser.
+
 [简体中文](./README.md) · **English**
 
 </div>
@@ -143,6 +148,19 @@ uv run python scripts/build_genomics_databases.py --download \
 ---
 
 ## 🚀 Quick start
+
+### 👀 Just want to see what it looks like?
+
+Skip the backend entirely and run the frontend demo — it ships with a mocked API and covers the
+landing page, login, and a chat page with worked examples:
+
+```bash
+cd frontend && npm install
+npm run dev               # → http://localhost:5173/demo.html
+```
+
+Or just open the [hosted version](https://xukanz.github.io/genomechat/). To run the real system,
+read on.
 
 ### Prerequisites
 

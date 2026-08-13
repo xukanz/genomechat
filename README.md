@@ -15,6 +15,10 @@
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 
+### [🚀 在线体验 Demo →](https://xukanz.github.io/genomechat/)
+
+前端完整演示：落地页 → 登录 → 对话。内置示例问答与图表，**无需后端、无需注册**，浏览器直接打开即可。
+
 **简体中文** · [English](./README.en.md)
 
 </div>
@@ -143,6 +147,17 @@ uv run python scripts/build_genomics_databases.py --download \
 ---
 
 ## 🚀 快速开始
+
+### 👀 只想看看长什么样？
+
+不用装任何后端依赖，跑前端 demo 即可 —— 它自带一套模拟的 API，包含落地页、登录页和带示例问答的对话页：
+
+```bash
+cd frontend && npm install
+npm run dev               # → http://localhost:5173/demo.html
+```
+
+也可以直接看[在线版本](https://xukanz.github.io/genomechat/)。想跑真实系统，继续往下看。
 
 ### 前置要求
 

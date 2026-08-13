@@ -3,7 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import logoMark from '../assets/logo.svg'
 import { BRANDING } from '../config/branding'
 
-export default function LoginPage() {
+interface LoginPageProps {
+  /** Pre-filled credentials, passed through to LoginForm. Empty in the real app. */
+  defaultEmail?: string
+  defaultPassword?: string
+}
+
+export default function LoginPage({ defaultEmail, defaultPassword }: LoginPageProps = {}) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <div className="w-full max-w-md">
@@ -25,7 +31,7 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <LoginForm />
+            <LoginForm defaultEmail={defaultEmail} defaultPassword={defaultPassword} />
           </CardContent>
         </Card>
 
