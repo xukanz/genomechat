@@ -1,318 +1,280 @@
-# GenomeChat
+<div align="center">
 
-A full-stack conversational AI platform with multi-agent capabilities for genomics research, data analysis, and code generation. Ask questions in plain language across public variant, association, and annotation databases; the system plans the work, queries the data, runs analysis code, and streams a synthesised answer back.
+# 🧬 GenomeChat
 
-Built with FastAPI, LangGraph, LangChain, React, and TypeScript.
+**用自然语言对话基因组学数据**
 
-## 📦 Monorepo Structure
+一个面向基因组学研究的全栈多智能体平台 —— 用大白话提问，系统自己规划任务、查询数据库、执行分析代码，然后把综合结论流式返回给你。
 
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1C3C3C?style=flat-square&logo=langchain&logoColor=white)](https://github.com/langchain-ai/langgraph)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
+
+**简体中文** · [English](./README.en.md)
+
+</div>
+
+---
+
+## ✨ 这是什么
+
+GenomeChat 把「问一个基因组学问题」和「拿到一份带图表、带引文、可复现的答案」之间的所有步骤自动化了。
+
+你问：*「BRCA1 上有多少个致病变异？按分子后果画个分布图。」*
+
+系统会：**规划** → 生成并校验 SQL → **查询** ClinVar → 在沙箱里**执行** Python 画图 → 检索**文献**佐证 → **综合**成一段回答，全程逐 token 流式推送。
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🤖 多智能体协作
+基于 LangGraph 的五节点图，协调者路由、编排者规划、工作节点执行
+
+</td>
+<td width="50%" valign="top">
+
+### 🗄️ 三套公共数据库
+ClinVar / GWAS Catalog / Ensembl，运行时热切换，无需重启
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🔬 安全代码执行
+Python 与 R 沙箱独立成服务，非 root、只读根文件系统、资源配额
+
+</td>
+<td width="50%" valign="top">
+
+### 📊 全链路可观测
+每个节点、工具调用、LLM 请求都有 OpenTelemetry span，落 MongoDB
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🧠 智能体架构
+
+```mermaid
+flowchart LR
+    START([用户提问]) --> C{Coordinator<br/>协调者}
+    C -->|闲聊| DONE([直接回答])
+    C -->|需要干活| O[Orchestrator<br/>编排者]
+    O <--> SQL[SQL Agent<br/>数据库]
+    O <--> CODER[Coder<br/>Python / R]
+    O <--> RES[Researcher<br/>Europe PMC]
+    O --> OUT([SSE 流式综合答案])
+
+    style C fill:#6366f1,color:#fff,stroke:none
+    style O fill:#8b5cf6,color:#fff,stroke:none
+    style SQL fill:#0ea5e9,color:#fff,stroke:none
+    style CODER fill:#10b981,color:#fff,stroke:none
+    style RES fill:#f59e0b,color:#fff,stroke:none
 ```
-genomechat/
-├── backend/                     # Platform backend services
-│   ├── src/
-│   │   ├── agents/              # LangGraph agents (Coordinator, Orchestrator, Coder, SQL Agent)
-│   │   ├── api/                 # FastAPI routes and application
-│   │   ├── config/              # Configuration (settings, database registry)
-│   │   ├── graph/               # LangGraph state and builder
-│   │   ├── models/              # Pydantic models
-│   │   ├── prompts/             # Agent system prompts (with per-database context)
-│   │   ├── service/
-│   │   │   ├── database/        # Connections (SQLite, DuckDB, MySQL, Postgres, …)
-│   │   │   ├── memory/          # Memory pipeline (Phase 0.5, default off)
-│   │   │   └── observability/   # OpenTelemetry tracing + MongoDB exporter
-│   │   ├── tools/               # LangChain tools for agents
-│   │   └── utils/               # Utility functions
-│   ├── databases/               # Built database artifacts (see Data Sources)
-│   ├── scripts/                 # Data preparation, audits, migrations
-│   └── tests/                   # Test suite
-├── frontend/                    # React + TypeScript SPA
-├── sandbox/                     # Python code execution sandbox (separate service)
-├── r-sandbox/                   # R code execution sandbox (separate service)
-├── docker/                      # Docker Compose files (dev + prod)
-└── docs/                        # Documentation
-```
 
-## 🧬 Data Sources
+| 节点 | 职责 |
+|---|---|
+| 🧭 **Coordinator** | 路由入口。闲聊直接答，真活儿交给编排者 |
+| 🎯 **Orchestrator** | 规划多步任务、逐个调度工作节点，最后综合成文 |
+| 💻 **Coder** | 在沙箱服务中生成并执行 Python / R |
+| 🗃️ **SQL Agent** | 感知 schema 的 SQL 生成，带校验与安全流水线 |
+| 📚 **Researcher** | 通过公开的 [Europe PMC](https://europepmc.org/) API 检索文献 |
 
-Three database profiles ship by default, all built from public genomics resources. Switch between them at runtime from the UI or the API — no restart needed.
+> **Summarizer 不是节点**，而是挂在编排者上的 `SummarizationMiddleware`。它跑在独立的（更便宜的）模型上，在上下文窗口写满时压缩历史。
 
-| Profile | Source | Storage | License |
+所有工作节点执行完都把控制权交还编排者 —— 这是这张图唯一的回边规则。
+
+**研究模式**：`标准` 高效直答 · `深度研究` 多维度迭代深挖，发现结果在智能体之间传递。
+
+---
+
+## 🧬 数据源
+
+三套数据库配置开箱即用，全部由公开基因组学资源本地构建。可在 UI 或 API 中运行时切换。
+
+| 配置 | 来源 | 存储 | 许可 |
 |---|---|---|---|
-| **clinvar** | [NCBI ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/) variant/condition assertions | SQLite, built locally | Public domain |
-| **gwas** | [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/) associations + studies | Parquet via DuckDB, built locally | CC BY 4.0 |
-| **ensembl** | [Ensembl](https://www.ensembl.org/) GRCh38 gene annotation | Parquet via DuckDB, built locally | EMBL-EBI, no restrictions |
+| 🩺 **clinvar** | [NCBI ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/) 变异 / 疾病断言 | SQLite，本地构建 | Public domain |
+| 📈 **gwas** | [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/) 关联 + 研究 | Parquet via DuckDB | CC BY 4.0 |
+| 🧾 **ensembl** | [Ensembl](https://www.ensembl.org/) GRCh38 基因注释 | Parquet via DuckDB | EMBL-EBI，无限制 |
 
-Build them before first run:
+首次运行前先构建：
 
 ```bash
 cd backend
 uv run python scripts/build_genomics_databases.py --download
 ```
 
-This downloads roughly 640 MB of source files into `backend/databases/_raw/` and produces `databases/clinvar/clinvar.db` (~1.7 GB, 4.5M rows), `databases/gwas/*.parquet`, and `databases/ensembl/*.parquet` (~40 MB). Both the raw downloads and the built artifacts are gitignored — every checkout rebuilds them. The ClinVar build keeps GRCh38 rows only; pass `--clinvar-full` to keep every assembly (roughly double).
+<details>
+<summary><b>📦 构建细节（磁盘占用、耗时、跳过某个库、升级 Ensembl 版本）</b></summary>
 
-Budget about 20 minutes for the first run, most of it download time. Skip individual profiles with `--skip-clinvar`, `--skip-gwas`, `--skip-ensembl`.
+<br>
 
-The `ensembl` profile is built from the release-116 GTF. The release is pinned rather than tracking `current`, because Ensembl bakes the release number into the filename and a silent upgrade would invalidate the row counts quoted in the schema description. Move to a newer release with:
+这会把约 **640 MB** 源文件下载到 `backend/databases/_raw/`，产出：
 
-```bash
-uv run python scripts/build_genomics_databases.py --download --ensembl-release 117 --skip-clinvar --skip-gwas
-```
+- `databases/clinvar/clinvar.db` — 约 1.7 GB，450 万行
+- `databases/gwas/*.parquet`
+- `databases/ensembl/*.parquet` — 约 40 MB
 
-## 🚀 Key Features
+原始下载和构建产物都在 gitignore 里 —— **每次全新 checkout 都要重建**。
 
-### Multi-Agent System
+ClinVar 构建默认只保留 GRCh38 的行；传 `--clinvar-full` 保留所有参考基因组版本（体积大约翻倍）。
 
-Built with LangGraph. Five nodes make up the top-level graph: every request enters at the coordinator, and the worker nodes always hand control back to the orchestrator.
+首次运行预留 **20 分钟左右**，大部分时间花在下载上。用 `--skip-clinvar`、`--skip-gwas`、`--skip-ensembl` 跳过单个配置。
 
-- **Coordinator** — routes incoming queries; small talk gets answered directly, real work is handed off
-- **Orchestrator** — plans and coordinates multi-step tasks, then synthesises the final answer
-- **Coder** — generates and executes Python or R in a sandboxed service
-- **SQL Agent** — schema-aware SQL generation with a validation and safety pipeline
-- **Researcher** — searches scientific literature through the public [Europe PMC](https://europepmc.org/) API
-
-The **Summarizer** is not a node but a `SummarizationMiddleware` on the orchestrator, running on its own (cheaper) model to compress the history when the context window fills.
-
-### Observability
-
-OpenTelemetry spans for every node, tool call, and LLM request, exported to MongoDB and optionally to Langfuse. Attributes follow the OTel GenAI semantic conventions, so third-party dashboards render them without translation.
+`ensembl` 配置基于 **release-116** 的 GTF 构建。版本是写死的而不是跟随 `current`：Ensembl 把版本号烤进了文件名里，一次静默升级会让 schema 描述中标注的行数全部失效。升级到新版本：
 
 ```bash
-OTEL_ENABLED=true
-TRACE_STORAGE_ENABLED=true
+uv run python scripts/build_genomics_databases.py --download \
+  --ensembl-release 117 --skip-clinvar --skip-gwas
 ```
 
-Then `GET /internal/traces` after a chat turn. Access is tenant-scoped, audited, and rate-limited.
+</details>
 
-### Context Window Management
+---
 
-Long conversations are summarised automatically at 70% of the model's input window, and stale tool outputs are cleared independently. Configurable via the `CONTEXT_*` settings.
+## 🚀 快速开始
 
-### API Endpoints
+### 前置要求
 
-#### Authentication (`/auth`)
-- `POST /auth/register` — user registration
-- `POST /auth/login` — login (OAuth2 password flow)
-- `POST /auth/refresh` — refresh access token
-- `GET /auth/me` — current user info
-- `POST /auth/logout` — logout
+| 必需 | 可选 |
+|---|---|
+| Python 3.12+ · [uv](https://docs.astral.sh/uv/) | AWS S3（生成文件持久化） |
+| Node.js 18+ | R（R 沙箱） |
+| MongoDB | Docker |
+| 一个 LLM 供应商 | |
 
-#### Chat (`/chat`)
-- `POST /chat` — synchronous chat
-- `POST /chat/stream` — streaming chat over Server-Sent Events
+> ⚠️ **MongoDB 是硬依赖**，而且不只是存 checkpoint —— 用户账号、会话、项目、报告、文件元数据全在里面。
 
-#### Databases (`/databases`)
-- `GET /databases` — list available profiles
-- `GET /databases/active` — currently active profile
-- `GET /databases/{database_id}` — profile detail (type, SQL dialect, domain, example questions)
-- `POST /databases/{database_id}/connect` — switch active profile
+### 🐳 方式一：Docker Compose（推荐）
 
-#### Conversations (`/conversations`)
-- `GET /conversations` — list the caller's conversations (optionally filtered by project)
-- `GET /conversations/{conversation_id}` — conversation metadata
-- `GET /conversations/{conversation_id}/history` — replay the stored message history
-- `PATCH /conversations/{conversation_id}` — rename
-- `DELETE /conversations/{conversation_id}` — delete
+```bash
+cp backend/.env.example backend/.env
+touch sandbox/.env r-sandbox/.env      # compose 要求这两个文件存在
+cd docker && docker compose up -d
+```
 
-#### Projects (`/projects`)
-Projects group conversations, own reusable code snippets, and can be shared with other users.
+| 服务 | 地址 |
+|---|---|
+| 🖥️ 前端 | http://localhost:3100 |
+| ⚙️ 后端 | http://localhost:8000 |
+| 🐍 Python 沙箱 | http://localhost:8080 |
+| 📊 R 沙箱 | http://localhost:8081 |
 
-- `GET /projects` — list owned and shared-with-me projects
-- `POST /projects` — create
-- `GET|PATCH|DELETE /projects/{project_id}` — read, update, delete (the default project cannot be deleted)
-- `POST /projects/{project_id}/conversations/{conversation_id}/move` — move a conversation between projects
-- `GET|POST /projects/{project_id}/shares` — list or grant shared access
-- `DELETE /projects/{project_id}/shares/{user_id}` — revoke shared access
-- `GET|POST /projects/{project_id}/snippets` — list or create snippets injected into the coder prompt
-- `PUT|DELETE /projects/{project_id}/snippets/{snippet_id}` — update or delete a snippet
-- `PATCH /projects/{project_id}/snippets/{snippet_id}/toggle` — enable/disable without deleting
+> MongoDB **不在** compose 文件里 —— 把 `MONGODB_CONNECTION_STRING` 指向一个可达的实例。
 
-#### Artifacts (`/artifacts`)
-Files produced by the coder and SQL agents, tracked in MongoDB and stored in S3. Without S3 configured these endpoints return nothing — see [Generated Files and S3](#generated-files-and-s3).
+### 🔧 方式二：本地开发
 
-- `GET /artifacts` — list generated files (filter by thread, project, file type, or content type; paginated)
-- `GET /artifacts/{file_id}/download` — presigned download URL
-- `POST /artifacts/batch-download-urls` — presigned URLs for many files at once
-
-#### Reports (`/reports`)
-- `GET /reports` — list saved reports
-- `POST /reports` — save an assistant answer as a report
-- `GET /reports/check?conversation_id=&message_index=` — whether a given message has already been saved
-- `GET /reports/conversation/{conversation_id}` — reports saved from one conversation
-- `GET|PATCH|DELETE /reports/{report_id}` — read, update, delete
-
-#### Feedback (`/feedback`)
-- `POST /feedback` — create or update thumbs up/down on a message
-- `GET /feedback/message?conversation_id=&message_index=` — feedback for a single message
-- `GET /feedback/conversation/{conversation_id}` — all feedback in a conversation
-- `DELETE /feedback/{feedback_id}` — delete by id
-- `DELETE /feedback/message/{conversation_id}/{message_index}` — delete by message position
-
-#### Users (`/users`)
-- `GET /users/search` — look up users by email or name (used by the project share dialog)
-- `PATCH /users/me` — update the caller's profile
-
-#### Internal (`/internal`, gated by `INTERNAL_OBSERVABILITY_ENABLED`)
-- `GET /internal/traces` — query captured spans
-- `GET /internal/traces/raw` — raw transcript access; reserved for a later phase, currently returns `501`
-- `GET /internal/memory` — inspect extracted memories
-- `POST /internal/memory/consolidate` — trigger a consolidation pass on demand
-
-#### Health
-- `GET /health` — health check
-- `GET /health/detailed` — MongoDB and Python-sandbox connectivity plus a redacted config summary; reports `degraded` if either is unreachable
-
-Interactive docs are served at `/docs` (Swagger UI) and `/redoc`.
-
-### Research Modes
-
-- **Standard** — efficient, direct responses
-- **Deep Research** — multi-faceted analysis with iterative deepening and findings passed between agents
-
-### Tools Available to Agents
-
-**Database** — `execute_sql_query`, `execute_sql_query_and_save`, `get_database_schema`, `get_random_subsamples`
-
-**Files** — `list_files_by_thread`, `list_files_by_type`, `read_file_from_s3`, `list_s3_files`
-
-**Code execution** — `execute_code` (Python), `execute_r_code` (R)
-
-**Research** — `search_literature`, `search_by_doi`, `get_paper_citations`, `get_literature_stats`
-
-**Planning** — `manage_plan`, the orchestrator's todo list; its updates are streamed to the UI as plan events
-
-**SQL pipeline** — `execute_sql_pipeline`, used by the agentic SQL graph to generate, validate, and run a query in one call
-
-Not every tool goes to every agent. The coder gets the file and code-execution tools, the orchestrator gets `manage_plan` only, and the SQL agent gets the schema, sampling, and pipeline tools.
-
-## 🛠️ Setup & Development
-
-### Prerequisites
-
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) package manager
-- Node.js 18+
-- MongoDB — required, and not only for checkpoints: user accounts, conversations, projects, reports, and file metadata all live there
-- An LLM provider (see Environment Variables)
-- Optional: AWS S3 for generated files (see [Generated Files and S3](#generated-files-and-s3) for what you lose without it), R for the R sandbox
-
-### Backend Setup
+<details open>
+<summary><b>后端</b></summary>
 
 ```bash
 cd backend
 
-# Install uv if needed
+# 如果还没装 uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 uv python pin 3.12
 uv sync
 
-cp .env.example .env
-# Edit .env — see the required fields below
+cp .env.example .env      # 编辑 .env，见下方环境变量
 
-# Build the local databases (first run only)
-uv run python scripts/build_genomics_databases.py --download
+uv run python scripts/build_genomics_databases.py --download   # 仅首次
 
-uv run python main.py          # http://localhost:8000
+uv run python main.py     # → http://localhost:8000
 ```
 
-### Frontend Setup
+</details>
+
+<details>
+<summary><b>前端</b></summary>
 
 ```bash
 cd frontend
 npm install
 echo "VITE_API_URL=http://localhost:8000" > .env
-npm run dev                     # http://localhost:5173
+npm run dev               # → http://localhost:5173
 ```
 
-### Sandbox Setup
+</details>
+
+<details>
+<summary><b>沙箱（⚠️ 有个坑）</b></summary>
 
 ```bash
 cd sandbox
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-SANDBOX_JOBS_DIR=./.sandbox_jobs .venv/bin/python server.py    # http://localhost:8080
+SANDBOX_JOBS_DIR=./.sandbox_jobs .venv/bin/python server.py    # → http://localhost:8080
 ```
 
-`SANDBOX_JOBS_DIR` is only needed outside Docker — in a container the default `/sandbox/jobs` tmpfs mount is used.
+`SANDBOX_JOBS_DIR` 只在非 Docker 环境下需要 —— 容器里用默认的 `/sandbox/jobs` tmpfs 挂载。
 
-Launch with `.venv/bin/python`, not a bare `python`. Jobs run under the same
-interpreter as the server, so starting it with the system Python gives the agent
-a sandbox with no matplotlib, numpy, or pandas — it will then try to `pip install`
-them on every single job, into a directory that is deleted as soon as the job ends.
+**必须用 `.venv/bin/python` 启动，不能用裸 `python`。** 任务和服务器跑在同一个解释器下，用系统 Python 启动就等于给智能体一个没有 matplotlib、numpy、pandas 的沙箱 —— 它会在**每一个任务**里尝试 `pip install`，装进一个任务结束就被删掉的目录。
 
-### Docker Compose (Full Stack)
+</details>
 
-```bash
-cp backend/.env.example backend/.env
-touch sandbox/.env r-sandbox/.env      # compose requires these files to exist
-cd docker
-docker compose up -d
-```
+---
 
-- Frontend: http://localhost:3100
-- Backend: http://localhost:8000
-- Python sandbox: http://localhost:8080
-- R sandbox: http://localhost:8081
+## ⚙️ 配置
 
-MongoDB is **not** part of the compose file — point `MONGODB_CONNECTION_STRING` at a reachable instance.
-
-### Environment Variables
-
-`backend/.env.example` is the authoritative reference and documents every setting. These are required, and the backend will not start without them:
+`backend/.env.example` 是权威参考，记录了每一个设置项。以下两项**必填**，缺了后端起不来：
 
 ```bash
 JWT_SECRET_KEY=...             # python -c 'import secrets; print(secrets.token_urlsafe(32))'
 MONGODB_CONNECTION_STRING=mongodb://localhost:27017
 ```
 
-Plus credentials for whichever LLM provider `backend/src/config/agents.py` targets. `src/service/llm.py` supports direct Anthropic and OpenAI as well as gateway-fronted Azure, Bedrock, and GCP.
+外加 `backend/src/config/agents.py` 所指向的 LLM 供应商凭据。`src/service/llm.py` 支持直连 Anthropic 和 OpenAI，也支持网关形式的 Azure、Bedrock 和 GCP。
 
-### Generated Files and S3
+<details>
+<summary><b>📁 生成文件与 S3 —— 不配会怎样</b></summary>
 
-S3 is the artifact store for everything the agents produce: charts from the coder,
-result CSVs from the SQL agent, and anything else written during code execution.
-Records land in the MongoDB `files` collection and are served through `/artifacts`
-as presigned URLs.
+<br>
+
+S3 是所有智能体产物的存储后端：Coder 画的图、SQL Agent 导出的结果 CSV，以及代码执行期间写出的任何文件。记录落在 MongoDB 的 `files` 集合，通过 `/artifacts` 以预签名 URL 提供下载。
 
 ```bash
-AWS_ACCESS_KEY_ID=...          # omit both keys to use the boto3 default chain
-AWS_SECRET_ACCESS_KEY=...      # (IAM role, instance profile, ~/.aws/credentials)
-AWS_SESSION_TOKEN=...          # only for temporary credentials
-AWS_DEFAULT_REGION=us-east-1   # default
-AWS_DEFAULT_BUCKET=my-bucket   # required for uploads to happen at all
-ALLOWED_S3_BUCKETS=a,b         # optional whitelist; unset means any bucket
+AWS_ACCESS_KEY_ID=...          # 两个 key 都不填则走 boto3 默认凭据链
+AWS_SECRET_ACCESS_KEY=...      # （IAM role、实例 profile、~/.aws/credentials）
+AWS_SESSION_TOKEN=...          # 仅临时凭据需要
+AWS_DEFAULT_REGION=us-east-1   # 默认值
+AWS_DEFAULT_BUCKET=my-bucket   # 不设置就根本不会发生上传
+ALLOWED_S3_BUCKETS=a,b         # 可选白名单；不设表示不限
 ```
 
-Both services need these. The backend reads them via `settings` (`src/service/s3.py`),
-and the sandbox injects its own copy into each job's restricted environment
-(`sandbox/server.py`), so code running in the sandbox can upload directly.
-`AWS_DEFAULT_BUCKET` is only passed through when non-empty — an empty value is
-logged and dropped, which reads in the log as `[ENV] AWS_DEFAULT_BUCKET is not set`.
+**后端和沙箱都需要这些变量。** 后端通过 `settings` 读取（`src/service/s3.py`），沙箱则把自己那份注入到每个任务的受限环境里（`sandbox/server.py`），这样沙箱内运行的代码能直接上传。`AWS_DEFAULT_BUCKET` 只在非空时才透传 —— 空值会被记录并丢弃，日志里表现为 `[ENV] AWS_DEFAULT_BUCKET is not set`。
 
-**Running without S3 works, with real limits.** Files fall back to inline base64 in
-the tool result. The sandbox caps that at 1 MB per file and drops anything larger
-(logged as `Not returning <path>`), the payload is spent from the agent's context
-window — a 95 KB chart is roughly 127,000 base64 characters, about 32K tokens — and
-nothing is persisted, so `/artifacts` stays empty and reopening the conversation
-will not bring the file back. Fine for trying things out; configure S3 for anything
-beyond a couple of charts per conversation.
+**不配 S3 也能跑，但有实打实的代价：**
 
-#### Self-hosted S3 (MinIO)
+| 影响 | 说明 |
+|---|---|
+| 📉 大文件被丢弃 | 沙箱把内联 base64 限制在每文件 1 MB，超出直接丢（日志 `Not returning <path>`） |
+| 🔥 烧上下文 | 一张 95 KB 的图约等于 127,000 个 base64 字符，约 32K token，全从智能体上下文窗口里扣 |
+| 🕳️ 不落盘 | `/artifacts` 永远是空的，重开会话文件也回不来 |
 
-Set `AWS_ENDPOINT_URL` to use an S3-compatible server instead of AWS. MinIO needs
-no account and runs from a single binary:
+试用够了；但凡每轮会话要出好几张图，就配上 S3。
+
+**自建 S3（MinIO）** —— 设置 `AWS_ENDPOINT_URL` 即可用 S3 兼容服务代替 AWS。MinIO 不需要注册账号，单个二进制就能跑：
 
 ```bash
-# Download once (Linux x86_64; see https://min.io/download for other platforms)
+# 下载一次（Linux x86_64；其他平台见 https://min.io/download）
 curl -fsSLO https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x minio
 
 MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
   ./minio server ~/.minio-data --console-address :9001
 ```
 
-The console is at http://localhost:9001; create a bucket there, then point both
-services at it — `backend/.env` and `sandbox/.env` each need their own copy:
+控制台在 http://localhost:9001，在那里建个 bucket，然后让两个服务都指过去 —— `backend/.env` 和 `sandbox/.env` 各需要一份：
 
 ```bash
 AWS_ENDPOINT_URL=http://localhost:9000
@@ -322,80 +284,255 @@ AWS_DEFAULT_BUCKET=genomechat
 AWS_DEFAULT_REGION=us-east-1
 ```
 
-Addressing style is handled automatically: setting `AWS_ENDPOINT_URL` switches
-boto3 to path-style, because a self-hosted server reached by host:port cannot
-serve `http://<bucket>.localhost:9000`. Override with `AWS_S3_ADDRESSING_STYLE`
-(`auto`, `path`, `virtual`) if your server wants something else.
+寻址风格是自动处理的：设置 `AWS_ENDPOINT_URL` 会让 boto3 切到 path-style，因为通过 host:port 访问的自建服务无法响应 `http://<bucket>.localhost:9000`。如果你的服务器需要别的行为，用 `AWS_S3_ADDRESSING_STYLE`（`auto` / `path` / `virtual`）覆盖。
 
-Under Docker Compose, `localhost` inside a container is that container — use the
-MinIO service name, or `host.docker.internal` when MinIO runs on the host.
+在 Docker Compose 下，容器里的 `localhost` 指的是容器自己 —— 用 MinIO 的服务名，或者当 MinIO 跑在宿主机上时用 `host.docker.internal`。
 
-### Development Commands
+</details>
 
-```bash
-uv run pytest                              # test suite
-uv run pytest --cov=src --cov-report=html  # with coverage
-uv run ruff format .                       # format
-uv run ruff check --fix .                  # lint
-uv run mypy src/                           # type check
-```
+<details>
+<summary><b>📡 可观测性</b></summary>
 
-### CLI Tool
+<br>
 
-An interactive CLI for testing without the frontend:
+每个节点、工具调用、LLM 请求都有 OpenTelemetry span，导出到 MongoDB，也可以选择导出到 Langfuse。属性遵循 OTel GenAI 语义约定，所以第三方看板不需要做转换就能直接渲染。
 
 ```bash
-uv run python cli.py                         # streaming, standard mode
-uv run python cli.py --no-stream             # clearer errors when debugging
-uv run python cli.py --research-mode deep_research
+OTEL_ENABLED=true
+TRACE_STORAGE_ENABLED=true
 ```
 
-Commands: `/help`, `/clear`, `/thread`, `/sync`, `/stream`, `/mode standard|deep`, `/login`, `/register`, `/logout`, `/whoami`, `/exit`.
+之后在一轮对话结束后请求 `GET /internal/traces`。访问是租户隔离的，有审计、有限流。
 
-## 🏗️ Architecture
+</details>
 
-### Agent Workflow
+<details>
+<summary><b>🪟 上下文窗口管理</b></summary>
+
+<br>
+
+长会话在达到模型输入窗口 **70%** 时自动摘要，过期的工具输出则独立清理。通过 `CONTEXT_*` 系列设置项调整。
+
+</details>
+
+---
+
+## 🧰 智能体可用工具
+
+并不是每个工具都发给每个智能体 —— Coder 拿到文件和代码执行工具，Orchestrator 只拿 `manage_plan`，SQL Agent 拿 schema、采样和 pipeline 工具。
+
+| 类别 | 工具 |
+|---|---|
+| 🗃️ **数据库** | `execute_sql_query` · `execute_sql_query_and_save` · `get_database_schema` · `get_random_subsamples` |
+| 📁 **文件** | `list_files_by_thread` · `list_files_by_type` · `read_file_from_s3` · `list_s3_files` |
+| ▶️ **代码执行** | `execute_code`（Python） · `execute_r_code`（R） |
+| 📚 **文献** | `search_literature` · `search_by_doi` · `get_paper_citations` · `get_literature_stats` |
+| 📋 **规划** | `manage_plan` —— 编排者的待办列表，更新以 plan 事件流式推给 UI |
+| 🔎 **SQL 流水线** | `execute_sql_pipeline` —— 智能 SQL 图用它一次调用完成生成、校验、执行 |
+
+---
+
+## 🔌 API
+
+交互式文档在 `/docs`（Swagger UI）和 `/redoc`。
+
+<details>
+<summary><b>🔐 认证 <code>/auth</code></b></summary>
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/auth/register` | 用户注册 |
+| `POST` | `/auth/login` | 登录（OAuth2 password flow） |
+| `POST` | `/auth/refresh` | 刷新 access token |
+| `GET` | `/auth/me` | 当前用户信息 |
+| `POST` | `/auth/logout` | 登出 |
+
+</details>
+
+<details>
+<summary><b>💬 对话 <code>/chat</code> · <code>/conversations</code></b></summary>
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/chat` | 同步对话 |
+| `POST` | `/chat/stream` | 基于 SSE 的流式对话 |
+| `GET` | `/conversations` | 列出调用者的会话（可按项目过滤） |
+| `GET` | `/conversations/{id}` | 会话元数据 |
+| `GET` | `/conversations/{id}/history` | 回放已存储的消息历史 |
+| `PATCH` | `/conversations/{id}` | 重命名 |
+| `DELETE` | `/conversations/{id}` | 删除 |
+
+</details>
+
+<details>
+<summary><b>🗄️ 数据库 <code>/databases</code></b></summary>
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/databases` | 列出可用配置 |
+| `GET` | `/databases/active` | 当前激活的配置 |
+| `GET` | `/databases/{id}` | 配置详情（类型、SQL 方言、领域、示例问题） |
+| `POST` | `/databases/{id}/connect` | 切换激活配置 |
+
+</details>
+
+<details>
+<summary><b>📂 项目 <code>/projects</code></b></summary>
+
+项目用来归组会话、持有可复用的代码片段，并可以分享给其他用户。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/projects` | 列出自己拥有的和被分享的项目 |
+| `POST` | `/projects` | 创建 |
+| `GET`·`PATCH`·`DELETE` | `/projects/{id}` | 读取、更新、删除（默认项目不可删） |
+| `POST` | `/projects/{id}/conversations/{cid}/move` | 在项目间移动会话 |
+| `GET`·`POST` | `/projects/{id}/shares` | 列出或授予共享访问 |
+| `DELETE` | `/projects/{id}/shares/{user_id}` | 撤销共享访问 |
+| `GET`·`POST` | `/projects/{id}/snippets` | 列出或创建注入 coder 提示词的片段 |
+| `PUT`·`DELETE` | `/projects/{id}/snippets/{sid}` | 更新或删除片段 |
+| `PATCH` | `/projects/{id}/snippets/{sid}/toggle` | 不删除的前提下启用 / 停用 |
+
+</details>
+
+<details>
+<summary><b>📎 产物 <code>/artifacts</code></b></summary>
+
+Coder 和 SQL Agent 产出的文件，元数据记在 MongoDB，实体存在 S3。**未配置 S3 时这些接口返回空** —— 见上文「生成文件与 S3」。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/artifacts` | 列出生成文件（可按 thread、项目、文件类型、内容类型过滤；分页） |
+| `GET` | `/artifacts/{file_id}/download` | 预签名下载 URL |
+| `POST` | `/artifacts/batch-download-urls` | 批量获取预签名 URL |
+
+</details>
+
+<details>
+<summary><b>📄 报告 <code>/reports</code> · 反馈 <code>/feedback</code> · 用户 <code>/users</code></b></summary>
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/reports` | 列出已保存的报告 |
+| `POST` | `/reports` | 把一条助手回答保存为报告 |
+| `GET` | `/reports/check?conversation_id=&message_index=` | 该消息是否已被保存 |
+| `GET` | `/reports/conversation/{id}` | 某个会话中保存的报告 |
+| `GET`·`PATCH`·`DELETE` | `/reports/{id}` | 读取、更新、删除 |
+| `POST` | `/feedback` | 对消息创建或更新点赞 / 点踩 |
+| `GET` | `/feedback/message?conversation_id=&message_index=` | 单条消息的反馈 |
+| `GET` | `/feedback/conversation/{id}` | 某会话内的全部反馈 |
+| `DELETE` | `/feedback/{feedback_id}` | 按 id 删除 |
+| `DELETE` | `/feedback/message/{cid}/{index}` | 按消息位置删除 |
+| `GET` | `/users/search` | 按邮箱或姓名查用户（项目分享对话框在用） |
+| `PATCH` | `/users/me` | 更新调用者的个人资料 |
+
+</details>
+
+<details>
+<summary><b>🔬 内部 <code>/internal</code> · 健康检查 <code>/health</code></b></summary>
+
+`/internal` 由 `INTERNAL_OBSERVABILITY_ENABLED` 控制开关。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/internal/traces` | 查询捕获的 span |
+| `GET` | `/internal/traces/raw` | 原始 transcript 访问；预留给后续阶段，当前返回 `501` |
+| `GET` | `/internal/memory` | 查看抽取出的记忆 |
+| `POST` | `/internal/memory/consolidate` | 手动触发一次固化 |
+| `GET` | `/health` | 健康检查 |
+| `GET` | `/health/detailed` | MongoDB 与 Python 沙箱连通性 + 脱敏配置摘要；任一不可达则报 `degraded` |
+
+</details>
+
+---
+
+## 🏗️ 架构
 
 ```
-START → Coordinator → Orchestrator → Workers (Coder / SQL Agent) → Orchestrator → End
+genomechat/
+├── backend/                     # 平台后端服务
+│   ├── src/
+│   │   ├── agents/              # LangGraph 智能体（Coordinator / Orchestrator / Coder / SQL Agent）
+│   │   ├── api/                 # FastAPI 路由与应用
+│   │   ├── config/              # 配置（settings、数据库注册表）
+│   │   ├── graph/               # LangGraph 状态与构建器
+│   │   ├── models/              # Pydantic 模型
+│   │   ├── prompts/             # 智能体系统提示词（含每个数据库的上下文）
+│   │   ├── service/
+│   │   │   ├── database/        # 连接（SQLite / DuckDB / MySQL / Postgres…）
+│   │   │   ├── memory/          # 记忆流水线（Phase 0.5，默认关闭）
+│   │   │   └── observability/   # OpenTelemetry 追踪 + MongoDB 导出器
+│   │   ├── tools/               # 供智能体使用的 LangChain 工具
+│   │   └── utils/               # 工具函数
+│   ├── databases/               # 构建产物（见「数据源」）
+│   ├── scripts/                 # 数据准备、审计、迁移
+│   └── tests/                   # 测试套件
+├── frontend/                    # React + TypeScript SPA
+├── sandbox/                     # Python 代码执行沙箱（独立服务）
+├── r-sandbox/                   # R 代码执行沙箱（独立服务）
+├── docker/                      # Docker Compose 文件（dev + prod）
+└── docs/                        # 文档
 ```
 
-1. **Coordinator** decides whether the query needs the full pipeline
-2. **Orchestrator** builds a plan and routes to one worker at a time
-3. **Workers** execute and return control to the orchestrator
-4. **Orchestrator** synthesises once the plan is complete
-5. The response streams to the client over SSE
+### 状态管理
 
-### State Management
+**后端** —— LangGraph checkpoint 存在 MongoDB，thread ID 形如 `{user_id}:{conversation_id}`，数据库注册表支持运行时切换。请求级状态（当前数据库、智能体后端）用 `ContextVar` 承载，因此并发请求之间永远不会串。
 
-**Backend** — LangGraph checkpoints in MongoDB, thread IDs of the form `{user_id}:{conversation_id}`, and a runtime-switchable database registry. Request-scoped state (active database, agent backend) is carried in `ContextVar`s so concurrent requests never interfere.
+**前端** —— Zustand store 分别管理 auth、conversations、projects、databases、artifacts、feedback、reports、snippets 和 UI 状态。
 
-**Frontend** — Zustand stores for auth, conversations, projects, databases, artifacts, feedback, reports, snippets, and UI state.
+### 流式传输
 
-### Streaming
+SSE 承载逐 token 输出、计划更新、智能体 start/end 事件、工具事件，以及生成文件的元数据。
 
-Server-Sent Events carry token-by-token output, plan updates, agent start/end events, tool events, and generated file metadata.
+---
 
-## 🧪 Testing
+## 🔒 安全
+
+- 🔑 JWT 认证 + refresh token；bcrypt 密码哈希
+- 🛡️ SQL Agent 校验流水线：LLM 复核、拒绝 DDL、自动加行数上限
+- 📦 代码执行隔离在独立容器：非 root、只读根文件系统、tmpfs 临时空间、`no-new-privileges`、PID 上限、逐进程资源限制
+- 📋 每个数据库配置独立的表白名单
+
+---
+
+## 🧪 开发
 
 ```bash
 cd backend
-uv run pytest
-uv run pytest tests/test_config/test_database_registry.py -v
+
+uv run pytest                              # 测试套件
+uv run pytest --cov=src --cov-report=html  # 带覆盖率
+uv run pytest tests/test_config/test_database_registry.py -v   # 单个文件
+uv run ruff format .                       # 格式化
+uv run ruff check --fix .                  # lint
+uv run mypy src/                           # 类型检查
 ```
 
-## 🔒 Security
+### 命令行工具
 
-- JWT authentication with refresh tokens; bcrypt password hashing
-- SQL agent validation pipeline: LLM review, DDL rejection, automatic row limits
-- Code execution isolated in a separate container — non-root, read-only root filesystem, tmpfs scratch, `no-new-privileges`, PID cap, and per-process resource limits
-- Table whitelisting per database profile
+不想开前端时可以用交互式 CLI 测试：
 
-## 🙏 Acknowledgments
+```bash
+uv run python cli.py                         # 流式、标准模式
+uv run python cli.py --no-stream             # 调试时错误信息更清楚
+uv run python cli.py --research-mode deep_research
+```
 
-Built with [LangGraph](https://github.com/langchain-ai/langgraph), [LangChain](https://github.com/langchain-ai/langchain), FastAPI, and React.
+命令：`/help` · `/clear` · `/thread` · `/sync` · `/stream` · `/mode standard|deep` · `/login` · `/register` · `/logout` · `/whoami` · `/exit`
 
-Data courtesy of [NCBI ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/), the [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/), and [Ensembl](https://www.ensembl.org/).
+---
 
-Literature search is powered by [Europe PMC](https://europepmc.org/), an open
-literature database developed and operated by EMBL-EBI.
+## 🙏 致谢
+
+用 [LangGraph](https://github.com/langchain-ai/langgraph)、[LangChain](https://github.com/langchain-ai/langchain)、FastAPI 和 React 构建。
+
+数据来自 [NCBI ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/)、[NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/) 和 [Ensembl](https://www.ensembl.org/)。
+
+文献检索由 [Europe PMC](https://europepmc.org/) 提供支持 —— 一个由 EMBL-EBI 开发和运营的开放文献数据库。
+
+<div align="center">
+<br>
+
+**[⬆ 回到顶部](#-genomechat)** · [English](./README.en.md)
+
+</div>
