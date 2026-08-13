@@ -161,3 +161,29 @@
   }
 }
 
+/*
+ * Respect the OS "reduce motion" setting on the landing page.
+ *
+ * The looping decorations here run forever rather than playing once on entry —
+ * the shimmering headline, the pulses travelling the circuit board, the chip
+ * label's sweep — which is exactly the class of animation that triggers
+ * vestibular discomfort. Framer Motion's own loops are handled per-component
+ * with `motion-reduce:`; these are plain CSS, so they're stopped here.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .text-shimmer {
+    animation: none;
+    /* The gradient is clipped to transparent text, so killing the animation
+       alone would leave the headline mid-sweep. Paint it a flat brand blue. */
+    background-image: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    color: hsl(210, 100%, 35%);
+  }
+
+  .agent-circuit {
+    animation: none;
+    visibility: hidden;
+  }
+}
+

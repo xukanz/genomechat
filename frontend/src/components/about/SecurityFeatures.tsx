@@ -1,49 +1,24 @@
 import { motion } from "framer-motion"
 import { Shield, Lock, CheckCircle2, Server, FileCheck, Users } from "lucide-react"
+import { useLandingCopy } from "../../hooks/useLandingCopy"
+import type { LandingCopy } from "../../config/landing/copy"
 
-const securityFeatures = [
-  {
-    icon: Shield,
-    title: "JWT Authentication",
-    description: "Secure token-based authentication with automatic refresh",
-    color: "text-blue-600",
-    bgColor: "bg-blue-100"
-  },
-  {
-    icon: Lock,
-    title: "Isolated Sandbox",
-    description: "Code executes in resource-limited Docker containers",
-    color: "text-green-600",
-    bgColor: "bg-green-100"
-  },
-  {
-    icon: CheckCircle2,
-    title: "Schema Grounding",
-    description: "Agents only see real database schemas - prevents hallucinations",
-    color: "text-purple-600",
-    bgColor: "bg-purple-100"
-  },
-  {
-    icon: Server,
-    title: "Kubernetes Ready",
-    description: "Containerized deployment with auto-scaling and TLS",
-    color: "text-orange-600",
-    bgColor: "bg-orange-100"
-  },
-  {
-    icon: FileCheck,
-    title: "Validation Layers",
-    description: "SQL queries validated before execution with auto-correction",
-    color: "text-teal-600",
-    bgColor: "bg-teal-100"
-  },
-  {
-    icon: Users,
-    title: "User Isolation",
-    description: "MongoDB checkpoints isolate conversation state per user",
-    color: "text-indigo-600",
-    bgColor: "bg-indigo-100"
-  }
+type FeatureKey = keyof LandingCopy["security"]["items"]
+
+const FEATURES: { key: FeatureKey; icon: typeof Shield; color: string; bgColor: string }[] = [
+  { key: "auth", icon: Shield, color: "text-blue-600", bgColor: "bg-blue-100" },
+  { key: "sandbox", icon: Lock, color: "text-green-600", bgColor: "bg-green-100" },
+  { key: "grounding", icon: CheckCircle2, color: "text-purple-600", bgColor: "bg-purple-100" },
+  { key: "kubernetes", icon: Server, color: "text-orange-600", bgColor: "bg-orange-100" },
+  { key: "validation", icon: FileCheck, color: "text-teal-600", bgColor: "bg-teal-100" },
+  { key: "isolation", icon: Users, color: "text-indigo-600", bgColor: "bg-indigo-100" },
+]
+
+const BADGES: { key: keyof LandingCopy["security"]["badges"]; icon: typeof Shield }[] = [
+  { key: "auth", icon: Shield },
+  { key: "sandboxed", icon: Lock },
+  { key: "validated", icon: CheckCircle2 },
+  { key: "deployable", icon: Server },
 ]
 
 const containerVariants = {
@@ -61,6 +36,8 @@ const itemVariants = {
 }
 
 export function SecurityFeatures() {
+  const copy = useLandingCopy()
+
   return (
     <motion.div
       className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
@@ -69,11 +46,12 @@ export function SecurityFeatures() {
       whileInView="visible"
       viewport={{ once: true }}
     >
-      {securityFeatures.map((feature) => {
+      {FEATURES.map((feature) => {
         const Icon = feature.icon
+        const text = copy.security.items[feature.key]
         return (
           <motion.div
-            key={feature.title}
+            key={feature.key}
             className="relative p-6 rounded-xl bg-white border border-slate-200 shadow-sm overflow-hidden group"
             variants={itemVariants}
             whileHover={{ y: -4, boxShadow: "0 12px 24px -8px rgba(0,0,0,0.1)" }}
@@ -93,12 +71,8 @@ export function SecurityFeatures() {
                 <Icon className={`w-6 h-6 ${feature.color}`} />
               </motion.div>
 
-              <h3 className="font-semibold text-slate-900 mb-2">
-                {feature.title}
-              </h3>
-              <p className="text-sm text-slate-600">
-                {feature.description}
-              </p>
+              <h3 className="font-semibold text-slate-900 mb-2">{text.title}</h3>
+              <p className="text-sm text-slate-600">{text.description}</p>
             </div>
           </motion.div>
         )
@@ -108,12 +82,7 @@ export function SecurityFeatures() {
 }
 
 export function SecurityBadges() {
-  const badges = [
-    { label: "JWT Auth", icon: Shield },
-    { label: "Sandboxed", icon: Lock },
-    { label: "Validated", icon: CheckCircle2 },
-    { label: "Enterprise", icon: Server }
-  ]
+  const copy = useLandingCopy()
 
   return (
     <motion.div
@@ -123,17 +92,17 @@ export function SecurityBadges() {
       viewport={{ once: true }}
       variants={containerVariants}
     >
-      {badges.map((badge) => {
+      {BADGES.map((badge) => {
         const Icon = badge.icon
         return (
           <motion.div
-            key={badge.label}
+            key={badge.key}
             className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-full text-sm font-medium"
             variants={itemVariants}
             whileHover={{ scale: 1.05 }}
           >
             <Icon className="w-4 h-4" />
-            {badge.label}
+            {copy.security.badges[badge.key]}
           </motion.div>
         )
       })}

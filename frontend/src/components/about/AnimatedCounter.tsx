@@ -8,19 +8,12 @@ interface AnimatedCounterProps {
   prefix?: string
   decimals?: number
   className?: string
-  formatLarge?: boolean
-}
-
-function formatLargeNumber(num: number): string {
-  if (num >= 1000000) {
-    const millions = num / 1000000
-    // Only show decimal if it's not a whole number
-    return (millions % 1 === 0 ? millions.toFixed(0) : millions.toFixed(1)) + "M"
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(0) + "K"
-  }
-  return num.toLocaleString()
+  /**
+   * Abbreviate the running value. Injected rather than built in because the
+   * landing page groups by 万 in Chinese and by K/M in English — see
+   * lib/formatCount.ts.
+   */
+  format?: (value: number) => string
 }
 
 export function AnimatedCounter({
@@ -30,7 +23,7 @@ export function AnimatedCounter({
   prefix = "",
   decimals = 0,
   className = "",
-  formatLarge = false
+  format
 }: AnimatedCounterProps) {
   const ref = useRef<HTMLSpanElement>(null)
   const isInView = useInView(ref, { once: true, margin: "-100px" })
@@ -43,8 +36,8 @@ export function AnimatedCounter({
         duration,
         ease: "easeOut",
         onUpdate: (latest) => {
-          if (formatLarge) {
-            setDisplayValue(formatLargeNumber(Math.round(latest)))
+          if (format) {
+            setDisplayValue(format(Math.round(latest)))
           } else if (decimals > 0) {
             setDisplayValue(latest.toFixed(decimals))
           } else {
@@ -54,7 +47,7 @@ export function AnimatedCounter({
       })
       return controls.stop
     }
-  }, [isInView, value, duration, decimals, formatLarge, count])
+  }, [isInView, value, duration, decimals, format, count])
 
   return (
     <motion.span
@@ -75,10 +68,10 @@ interface StatCardProps {
   suffix?: string
   icon?: React.ReactNode
   color?: string
-  formatLarge?: boolean
+  format?: (value: number) => string
 }
 
-export function StatCard({ value, label, suffix = "", icon, color = "text-blue-600", formatLarge = false }: StatCardProps) {
+export function StatCard({ value, label, suffix = "", icon, color = "text-blue-600", format }: StatCardProps) {
   return (
     <motion.div
       className="text-center p-5"
@@ -94,7 +87,7 @@ export function StatCard({ value, label, suffix = "", icon, color = "text-blue-6
         </div>
       )}
       <div className={`text-3xl md:text-4xl font-bold ${color} mb-1 tracking-tight`}>
-        <AnimatedCounter value={value} suffix={suffix} formatLarge={formatLarge} />
+        <AnimatedCounter value={value} suffix={suffix} format={format} />
       </div>
       <div className="text-xs text-slate-500 font-medium tracking-wide uppercase">{label}</div>
     </motion.div>
