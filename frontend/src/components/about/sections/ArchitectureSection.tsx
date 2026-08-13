@@ -1,7 +1,6 @@
 import { motion } from "framer-motion"
-import { Card, CardContent } from "../../ui/card"
 import { SectionHeading } from "../SectionHeading"
-import { AgentWorkflowDiagram } from "../AgentWorkflowDiagram"
+import { ArchitectureFlipCard } from "../ArchitectureFlipCard"
 import { useLandingCopy } from "../../../hooks/useLandingCopy"
 import { SECTION_IDS } from "./anchors"
 
@@ -11,7 +10,7 @@ export function ArchitectureSection() {
   return (
     <motion.section
       id={SECTION_IDS.architecture}
-      className="max-w-7xl mx-auto px-6 py-24 scroll-mt-20"
+      className="max-w-5xl mx-auto px-6 py-24 scroll-mt-20"
       initial={{ opacity: 0 }}
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
@@ -22,11 +21,7 @@ export function ArchitectureSection() {
         subtitle={copy.architecture.subtitle}
       />
 
-      <Card className="border-slate-200/80 shadow-lg shadow-slate-200/50 overflow-hidden rounded-2xl">
-        <CardContent className="p-6 md:p-10">
-          <AgentWorkflowDiagram />
-        </CardContent>
-      </Card>
+      <ArchitectureFlipCard />
     </motion.section>
   )
 }

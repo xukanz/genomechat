@@ -63,6 +63,13 @@ export interface LandingCopy {
       orchestrator: string
       workers: string
     }
+    /** Labels for the card that flips between the overview and the full diagram. */
+    flip: {
+      toSchema: string
+      toOverview: string
+      openFullSize: string
+      schemaAlt: string
+    }
   }
   dataScale: {
     eyebrow: string

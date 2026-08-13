@@ -50,6 +50,13 @@ export const en: LandingCopy = {
       orchestrator: 'Orchestrator',
       workers: 'Workers',
     },
+    flip: {
+      toSchema: 'Full diagram',
+      toOverview: 'Agent overview',
+      openFullSize: 'Open full size',
+      schemaAlt:
+        'GenomeChat system architecture: frontend, orchestrator and worker agents, SQL workflow, data sources, retrieval tools and code execution sandboxes',
+    },
   },
   dataScale: {
     eyebrow: 'Data scale',

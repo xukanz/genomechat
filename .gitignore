@@ -108,6 +108,7 @@ backend/databases/ensembl/*.parquet
 # Architecture notes and UI reference media — kept locally, not published.
 docs/CODEBASE_ARCHITECTURE.md
 docs/frontend/references/
+docs/architecture_diagram.md
 
 # Captured third-party prompt reference and one-off generated writeups —
 # kept locally, not published.

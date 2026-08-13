@@ -48,6 +48,12 @@ export const zh: LandingCopy = {
       orchestrator: '编排者',
       workers: '工作节点',
     },
+    flip: {
+      toSchema: '系统全图',
+      toOverview: '智能体概览',
+      openFullSize: '查看大图',
+      schemaAlt: 'GenomeChat 系统架构图：前端、编排者与工作智能体、SQL 工作流、数据源、检索工具与代码执行沙箱',
+    },
   },
   dataScale: {
     eyebrow: '数据规模',
