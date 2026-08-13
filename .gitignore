@@ -109,6 +109,7 @@ backend/databases/ensembl/*.parquet
 docs/CODEBASE_ARCHITECTURE.md
 docs/frontend/references/
 docs/architecture_diagram.md
+docs/PROJECT_TUTORIAL.md
 
 # Captured third-party prompt reference and one-off generated writeups —
 # kept locally, not published.
