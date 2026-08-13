@@ -105,12 +105,12 @@ def coordinator_node(state: AgentState) -> Command[Literal["orchestrator", "__en
 
     # Use structured output for type-safe coordinator decisions
     # Structured outputs require streaming=False (streaming chunks can't be parsed as JSON)
-    # function_calling, not json_mode — see LLMService.STRUCTURED_OUTPUT_METHOD
+    # Schema-enforced, not json_mode — see LLMService.structured_output_method
     coordinator_decision = (
         LLMService.get_llm_by_agent("coordinator", streaming=False)
         .with_structured_output(
             CoordinatorResponse,
-            method=LLMService.STRUCTURED_OUTPUT_METHOD,
+            method=LLMService.structured_output_method(),
         )
         .invoke(messages)
     )

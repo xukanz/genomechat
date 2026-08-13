@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Annotated, Any, Callable, TYPE_CHECKING
+from typing import Annotated, Any, Callable, Literal, TYPE_CHECKING
 
 try:
     import yaml
@@ -40,9 +40,33 @@ _LEGACY_SECRET_KEYS = {
     "openai_bedrock_slug": "openai_slug",
 }
 
-# Header the slug travelled in before it moved into `openai_extra_headers`.
-# Only used to keep legacy `openai_slug` configuration working.
+# Headers the pre-rename gateway configuration relied on. Only used to keep a
+# legacy `openai_slug` deployment working; see `_apply_legacy_gateway_defaults`.
 _LEGACY_SLUG_HEADER = "x-portkey-slug"
+_LEGACY_API_KEY_HEADER = "x-portkey-api-key"
+
+
+def _parse_json_object(value: Any, var_name: str) -> Any:
+    """Parse a JSON-object setting, treating blank as empty.
+
+    Complex fields are JSON-decoded by pydantic-settings inside the env source,
+    before any validator runs, where a blank value raises `SettingsError` and
+    nothing downstream can soften it. Fields using this are declared `NoDecode`
+    so parsing happens here instead — orchestrators routinely inject `VAR=` for
+    an absent value, and taking the service down over it is the wrong trade.
+    Malformed JSON still fails, naming the variable.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{var_name} must be a JSON object, got {value!r}: {exc}") from exc
+    return value
 
 
 def load_vault_secrets() -> dict[str, Any]:
@@ -187,15 +211,15 @@ class Settings(BaseSettings):
         description="API key for the OpenAI-compatible gateway",
     )
 
-    # Our gateway reads the key from a custom header rather than the standard
-    # `Authorization` bearer, so the key is sent in both places: the bearer is
-    # what the name promises, the header is what this gateway actually checks.
-    # Set to "" for a gateway that only wants the bearer.
+    # Standard OpenAI-compatible auth is a bearer token, so bearer-only is the
+    # default: pointing a fresh deployment at any compatible endpoint needs no
+    # header configuration at all. Set this when the endpoint reads the key from
+    # a custom header instead — the key then travels in both places.
     openai_api_key_header: str = Field(
-        default="x-portkey-api-key",
-        description="Header to also carry the API key in ('' = bearer only)",
+        default="",
+        description="Header to also carry the API key in ('' = standard bearer only)",
     )
-    # Anything else the gateway needs on the wire — routing slugs, tenant ids.
+    # Anything else the endpoint needs on the wire — routing slugs, tenant ids.
     # JSON object in env: OPENAI_EXTRA_HEADERS={"x-portkey-slug":"bedrock"}
     #
     # `NoDecode` because pydantic-settings JSON-decodes complex fields inside the
@@ -204,31 +228,45 @@ class Settings(BaseSettings):
     # it. Parsing here keeps the failure modes ours.
     openai_extra_headers: Annotated[dict[str, str], NoDecode] = Field(
         default_factory=dict,
-        description="Extra headers sent to the gateway on every request (JSON object)",
+        description="Extra headers sent to the endpoint on every request (JSON object)",
     )
 
     @field_validator("openai_extra_headers", mode="before")
     @classmethod
     def _parse_extra_headers(cls, value: Any) -> Any:
-        """Parse the JSON object, treating blank as 'no extra headers'.
+        return _parse_json_object(value, "OPENAI_EXTRA_HEADERS")
 
-        Orchestrators routinely inject `OPENAI_EXTRA_HEADERS=` when the value is
-        absent; taking the service down at startup over a header nobody wanted
-        is the wrong trade. Malformed JSON still fails, but says why.
-        """
-        if value is None:
-            return {}
-        if isinstance(value, str):
-            text = value.strip()
-            if not text:
-                return {}
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"OPENAI_EXTRA_HEADERS must be a JSON object, got {value!r}: {exc}"
-                ) from exc
-        return value
+    # Which `with_structured_output` method this endpoint supports. Anthropic
+    # models need function_calling; OpenAI endpoints do better with json_schema.
+    # `json_mode` is not schema-enforced — it asks for JSON in the prompt and
+    # parses whatever comes back — so prose can leak through; pick it only for an
+    # endpoint that supports nothing better.
+    openai_structured_output_method: Literal["function_calling", "json_schema", "json_mode"] = (
+        Field(
+            default="function_calling",
+            description="LangChain structured-output method supported by this endpoint",
+        )
+    )
+
+    # Extends the built-in blocklist in src/service/llm.py. Substring match
+    # against the de-hyphenated model id, same as the built-ins.
+    openai_no_temperature_models: str = Field(
+        default="",
+        description="Comma-separated extra model ids that reject the temperature parameter",
+    )
+
+    # Overlays the built-in table in src/service/observability/cost.py. Without
+    # it, every model an unknown endpoint serves is costed at zero.
+    # JSON object in env: OPENAI_MODEL_PRICES={"my-model":[0.5,1.5]}
+    openai_model_prices: Annotated[dict[str, tuple[float, float]], NoDecode] = Field(
+        default_factory=dict,
+        description="Model id -> [input, output] USD per 1M tokens, overlaying the built-in table",
+    )
+
+    @field_validator("openai_model_prices", mode="before")
+    @classmethod
+    def _parse_model_prices(cls, value: Any) -> Any:
+        return _parse_json_object(value, "OPENAI_MODEL_PRICES")
 
     # Legacy: the slug used to be its own setting. Folded into
     # `openai_extra_headers` below so deployed PORTKEY_BEDROCK_SLUG values keep
@@ -240,19 +278,29 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def _fold_legacy_slug_into_headers(self) -> "Settings":
-        """Carry a legacy slug setting into the extra headers.
+    def _apply_legacy_gateway_defaults(self) -> "Settings":
+        """Keep pre-rename gateway configuration working end to end.
 
-        Without this, upgrading silently drops the routing header for every
-        environment that still configures the slug the old way — the gateway
-        then rejects requests at runtime rather than at startup.
-        An explicit OPENAI_EXTRA_HEADERS entry always wins.
+        A legacy slug is the tell that a deployment predates the generic
+        defaults, so restore the whole legacy shape — the slug header *and* the
+        API-key header. Doing only the first half would let the bearer-only
+        default silently 401 every environment that never set the key header
+        explicitly, and it would fail on the first request rather than at
+        startup.
+
+        Anything stated explicitly wins: an OPENAI_EXTRA_HEADERS entry for the
+        slug header, or an OPENAI_API_KEY_HEADER of any value including empty.
         """
-        if self.openai_slug and _LEGACY_SLUG_HEADER not in self.openai_extra_headers:
+        if not self.openai_slug:
+            return self
+
+        if _LEGACY_SLUG_HEADER not in self.openai_extra_headers:
             self.openai_extra_headers = {
                 **self.openai_extra_headers,
                 _LEGACY_SLUG_HEADER: self.openai_slug,
             }
+        if "openai_api_key_header" not in self.model_fields_set:
+            self.openai_api_key_header = _LEGACY_API_KEY_HEADER
         return self
 
     # Application Configuration
@@ -590,18 +638,31 @@ class Settings(BaseSettings):
         le=1440,
         description="Consolidation cadence in minutes",
     )
-    memory_embedding_provider: str = Field(
-        default="openai-bedrock-titan",
-        description="Embedding provider: openai-bedrock-titan",
-    )
     memory_embedding_model: str = Field(
         default="amazon.titan-embed-text-v2:0",
         description="Embedding model identifier",
     )
-    memory_embedding_dimensions: int = Field(
+    # Sent as a request parameter when set. Titan V2 (256/512/1024) and OpenAI's
+    # text-embedding-3-* both read it, but an endpoint that doesn't know it
+    # rejects the whole request — leave blank to omit it entirely.
+    memory_embedding_dimensions: int | None = Field(
         default=1024,
-        description="Embedding output dimensionality (Titan V2 supports 256/512/1024)",
+        description="Embedding output dimensionality; blank to omit the parameter",
     )
+
+    @field_validator("memory_embedding_dimensions", mode="before")
+    @classmethod
+    def _blank_dimensions_means_omit(cls, value: Any) -> Any:
+        """Treat a blank env var as 'don't send dimensions'.
+
+        Same reasoning as the JSON settings: `MEMORY_EMBEDDING_DIMENSIONS=` is a
+        normal thing for an orchestrator to inject, and it should mean "unset"
+        rather than failing int parsing at startup.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     memory_duplicate_threshold: float = Field(
         default=0.85,
         ge=0.0,

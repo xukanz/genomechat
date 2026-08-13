@@ -81,18 +81,24 @@ services:
       - LOG_LEVEL=debug
       - SANDBOX_URL=${SANDBOX_URL:-http://sandbox:8080}
       - R_SANDBOX_URL=${R_SANDBOX_URL:-http://r-sandbox:8081}
-      # OpenAI-compatible gateway, used by the agents and the memory pipeline.
+      # OpenAI-compatible endpoint, used by the agents and the memory pipeline.
+      # Any compatible endpoint works — these two are the only required vars.
       # The backend also still accepts the older OPENAI_BEDROCK_* / PORTKEY_*
-      # spellings of these.
+      # spellings of them.
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      # Which header also carries the key ('' = standard bearer only).
-      - OPENAI_API_KEY_HEADER=${OPENAI_API_KEY_HEADER:-x-portkey-api-key}
-      # OPENAI_EXTRA_HEADERS is deliberately NOT listed here. It is JSON, so an
-      # inline ${VAR:-...} default would have to nest braces, and listing it
-      # bare would override the env_file with an empty string whenever the host
-      # doesn't set it. Put it in backend/.env instead (loaded via env_file):
+      # The optional endpoint-capability vars are deliberately NOT listed here.
+      # Two are JSON, so an inline ${VAR:-...} default would have to nest
+      # braces; and listing any of them bare would set it to an empty string
+      # whenever the host doesn't — which both overrides the env_file and, for
+      # OPENAI_API_KEY_HEADER specifically, counts as "explicitly configured"
+      # and so permanently disables the legacy-gateway fallback in settings.py.
+      # Put them in backend/.env instead (already loaded via env_file):
+      #   OPENAI_API_KEY_HEADER=x-portkey-api-key   # '' = standard bearer
       #   OPENAI_EXTRA_HEADERS={"x-portkey-slug":"bedrock"}
+      #   OPENAI_MODEL_PRICES={"my-model":[0.5,1.5]}
+      #   OPENAI_STRUCTURED_OUTPUT_METHOD=function_calling|json_schema|json_mode
+      #   OPENAI_NO_TEMPERATURE_MODELS=some-reasoning-model
       # Per-agent models — defaults live in src/config/settings.py
       - OPENAI_MODEL_COORDINATOR=${OPENAI_MODEL_COORDINATOR:-us.anthropic.claude-sonnet-4-6}
       - OPENAI_MODEL_ORCHESTRATOR=${OPENAI_MODEL_ORCHESTRATOR:-us.anthropic.claude-opus-5}

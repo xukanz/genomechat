@@ -73,27 +73,47 @@ class LLMService:
     }
 
     @classmethod
+    def _no_temperature_models(cls) -> set[str]:
+        """Built-in blocklist plus whatever this endpoint adds.
+
+        Union only — `settings.openai_no_temperature_models` extends the
+        built-ins, it cannot remove one. So an endpoint serving a model whose
+        name collides with a built-in entry (a locally-hosted `o3` that does
+        accept temperature, say) silently loses temperature control. No caller
+        has needed the inverse yet.
+        """
+        extra = settings.openai_no_temperature_models
+        return cls._NO_TEMPERATURE_MODELS | {m.strip() for m in extra.split(",") if m.strip()}
+
+    @classmethod
     def _supports_temperature(cls, model: str) -> bool:
         """Check if model supports temperature parameter."""
         model_base = model.lower().replace("-", "")
         return not any(
-            no_temp_model.replace("-", "") in model_base
-            for no_temp_model in cls._NO_TEMPERATURE_MODELS
+            no_temp_model.lower().replace("-", "") in model_base
+            for no_temp_model in cls._no_temperature_models()
         )
 
-    # Structured output method for every model we serve.
-    #
-    # The gateway's Bedrock route serves Anthropic models, which need
-    # ``function_calling`` rather than ``json_mode``. ``json_mode`` is not
-    # schema-enforced — it asks for JSON in the prompt and parses whatever comes
-    # back — so a model that opens with a sentence of explanation raises
-    # ``OutputParserException`` instead of routing. That failed intermittently on
-    # Claude 5, which is more inclined to narrate. Tool calling is schema-enforced
-    # at the provider, so prose cannot leak through.
-    #
-    # Callers must use ``streaming=False``; Bedrock rejects tool use with
-    # streaming enabled.
-    STRUCTURED_OUTPUT_METHOD = "function_calling"
+    @classmethod
+    def structured_output_method(cls) -> str:
+        """The ``with_structured_output`` method this endpoint supports.
+
+        Read through settings rather than pinned as a constant: which methods
+        work is a property of the endpoint, and a class attribute would snapshot
+        it at import time.
+
+        The default, ``function_calling``, suits the Anthropic models we serve
+        today. ``json_mode`` is not schema-enforced — it asks for JSON in the
+        prompt and parses whatever comes back — so a model that opens with a
+        sentence of explanation raises ``OutputParserException`` instead of
+        routing. That failed intermittently on Claude 5, which is more inclined
+        to narrate. Tool calling is schema-enforced at the provider, so prose
+        cannot leak through.
+
+        Callers must use ``streaming=False``; Bedrock rejects tool use with
+        streaming enabled.
+        """
+        return settings.openai_structured_output_method
 
     @classmethod
     def create_llm(

@@ -56,14 +56,32 @@ def _canonicalize(model: str) -> str:
     return model
 
 
+def _lookup_price(model: str, canonical: str) -> tuple[float, float] | None:
+    """Resolve a price, letting configuration override the built-in table.
+
+    `OPENAI_MODEL_PRICES` is read here rather than merged at import so it stays
+    overridable at runtime and in tests. It is matched against the raw model id
+    first: an operator configuring prices for their own endpoint writes the ids
+    that endpoint actually reports, not our canonical names.
+    """
+    from src.config.settings import settings
+
+    overrides = settings.openai_model_prices
+    return (
+        overrides.get(model) or overrides.get(canonical) or _PRICE_TABLE_USD_PER_MTOK.get(canonical)
+    )
+
+
 def compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Return USD cost for a single LLM call.
 
     Returns 0.0 if the model is unknown so unknown-model calls don't crash the
     observability path; the caller can detect zero + unknown-model via the logs.
+    Point the deployment at a different endpoint and every model it serves is
+    unknown until `OPENAI_MODEL_PRICES` names it.
     """
     canonical = _canonicalize(model)
-    price = _PRICE_TABLE_USD_PER_MTOK.get(canonical)
+    price = _lookup_price(model, canonical)
     if price is None:
         logger.debug("cost: unknown model '%s' (canonical '%s') -> 0.0 USD", model, canonical)
         return 0.0

@@ -283,7 +283,7 @@ def sql_validator_node(
     prompt_str = get_processed_prompt("sql_agent/sql_validator", template_vars)
 
     try:
-        method = LLMService.STRUCTURED_OUTPUT_METHOD
+        method = LLMService.structured_output_method()
         structured_llm = llm_client.with_structured_output(SQLValidationResult, method=method)
         logger.info("SQL AGENT: Attempting SQL validation...")
         validation_result = structured_llm.invoke([HumanMessage(content=prompt_str)])

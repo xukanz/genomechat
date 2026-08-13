@@ -35,6 +35,10 @@ _GATEWAY_ENV = (
     "PORTKEY_BEDROCK_SLUG",
     "OPENAI_EXTRA_HEADERS",
     "OPENAI_API_KEY_HEADER",
+    "OPENAI_STRUCTURED_OUTPUT_METHOD",
+    "OPENAI_NO_TEMPERATURE_MODELS",
+    "OPENAI_MODEL_PRICES",
+    "MEMORY_EMBEDDING_DIMENSIONS",
 )
 
 
@@ -111,6 +115,110 @@ class TestLegacySlugFolding:
 
         assert s.get_openai_headers()["x-portkey-slug"] == "explicit-slug"
 
+    def test_legacy_slug_also_restores_the_api_key_header(self, monkeypatch):
+        """The whole legacy shape comes back, not just the slug.
+
+        Restoring only the slug header would let the bearer-only default
+        silently 401 every environment that never set OPENAI_API_KEY_HEADER —
+        and it would fail on the first request, not at startup.
+        """
+        s = _settings_from_env(monkeypatch, OPENAI_API_KEY="k", PORTKEY_BEDROCK_SLUG="bedrock")
+
+        assert s.get_openai_headers() == {
+            "x-portkey-api-key": "k",
+            "x-portkey-slug": "bedrock",
+        }
+
+    def test_an_explicitly_empty_key_header_beats_the_legacy_fallback(self, monkeypatch):
+        """Anything stated explicitly wins — including an explicit empty value.
+
+        This pins the `model_fields_set` check: "the operator set it to empty"
+        and "the operator never mentioned it" must not collapse into the same
+        case, or the fallback would be impossible to opt out of.
+        """
+        s = _settings_from_env(
+            monkeypatch,
+            OPENAI_API_KEY="k",
+            PORTKEY_BEDROCK_SLUG="bedrock",
+            OPENAI_API_KEY_HEADER="",
+        )
+
+        assert s.get_openai_headers() == {"x-portkey-slug": "bedrock"}
+
+
+class TestAnyCompatibleEndpoint:
+    """Pointing at any OpenAI-compatible endpoint must be pure configuration.
+
+    Each of these covers a spot that used to be hardcoded to the gateway we
+    happen to run, where the failure on a different endpoint was either a hard
+    400 or — worse — silent.
+    """
+
+    def test_default_auth_is_a_plain_bearer(self, monkeypatch):
+        """The headline promise: base_url + api_key and nothing else."""
+        s = _settings_from_env(monkeypatch, OPENAI_BASE_URL="https://api.openai.com/v1")
+
+        assert s.get_openai_headers() == {}
+
+    def test_structured_output_method_defaults_to_function_calling(self):
+        from src.service.llm import LLMService
+
+        assert LLMService.structured_output_method() == "function_calling"
+
+    def test_structured_output_method_is_configurable(self, monkeypatch):
+        from src.service.llm import LLMService
+
+        monkeypatch.setattr(settings, "openai_structured_output_method", "json_schema")
+
+        assert LLMService.structured_output_method() == "json_schema"
+
+    def test_unsupported_structured_output_method_fails_at_startup(self, monkeypatch):
+        """Not on the first structured-output call, when it's a runtime error."""
+        with pytest.raises(ValueError, match="openai_structured_output_method"):
+            _settings_from_env(monkeypatch, OPENAI_STRUCTURED_OUTPUT_METHOD="freeform")
+
+    def test_temperature_blocklist_is_extensible(self, monkeypatch):
+        """A model outside the built-in list that rejects temperature is a hard
+        400 that takes every agent using it offline."""
+        from src.service.llm import LLMService
+
+        assert LLMService._supports_temperature("local-reasoner-v2") is True
+
+        monkeypatch.setattr(settings, "openai_no_temperature_models", "local-reasoner, other")
+
+        assert LLMService._supports_temperature("local-reasoner-v2") is False
+        # Built-ins survive the union, and unrelated models are untouched.
+        assert LLMService._supports_temperature("claude-sonnet-5") is False
+        assert LLMService._supports_temperature("claude-sonnet-4-6") is True
+
+    def test_model_prices_can_be_configured(self, monkeypatch):
+        """Otherwise every model a new endpoint serves is costed at zero."""
+        from src.service.observability.cost import compute_cost
+
+        assert compute_cost("my-local-model", 1_000_000, 1_000_000) == 0.0
+
+        monkeypatch.setattr(settings, "openai_model_prices", {"my-local-model": (2.0, 6.0)})
+
+        assert compute_cost("my-local-model", 1_000_000, 1_000_000) == pytest.approx(8.0)
+
+    def test_configured_prices_override_the_built_in_table(self, monkeypatch):
+        from src.service.observability.cost import compute_cost
+
+        monkeypatch.setattr(settings, "openai_model_prices", {"claude-sonnet-4-6": (1.0, 1.0)})
+
+        assert compute_cost("claude-sonnet-4-6", 1_000_000, 0) == pytest.approx(1.0)
+
+    def test_blank_model_prices_do_not_break_startup(self, monkeypatch):
+        s = _settings_from_env(monkeypatch, OPENAI_MODEL_PRICES="")
+
+        assert s.openai_model_prices == {}
+
+    def test_blank_embedding_dimensions_mean_omit(self, monkeypatch):
+        """Blank must mean "don't send the parameter", not fail int parsing."""
+        s = _settings_from_env(monkeypatch, MEMORY_EMBEDDING_DIMENSIONS="")
+
+        assert s.memory_embedding_dimensions is None
+
 
 class TestGatewayHeaders:
     def test_extra_headers_parse_from_json(self, monkeypatch):
@@ -124,15 +232,11 @@ class TestGatewayHeaders:
         assert headers["x-portkey-slug"] == "bedrock"
 
     def test_api_key_is_injected_into_the_configured_header(self, monkeypatch):
-        s = _settings_from_env(monkeypatch, OPENAI_API_KEY="sk-test")
+        s = _settings_from_env(
+            monkeypatch, OPENAI_API_KEY="sk-test", OPENAI_API_KEY_HEADER="x-portkey-api-key"
+        )
 
-        # Default header name is the one our gateway reads today.
         assert s.get_openai_headers()["x-portkey-api-key"] == "sk-test"
-
-    def test_empty_api_key_header_sends_bearer_only(self, monkeypatch):
-        s = _settings_from_env(monkeypatch, OPENAI_API_KEY_HEADER="")
-
-        assert s.get_openai_headers() == {}
 
     def test_blank_extra_headers_do_not_break_startup(self, monkeypatch):
         """Orchestrators inject `OPENAI_EXTRA_HEADERS=` for absent values; an

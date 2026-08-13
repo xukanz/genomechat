@@ -113,7 +113,7 @@ async def _run_extraction(
     if not candidates:
         return []
 
-    # 3. Embed facts (bounded by module-level semaphore inside BedrockTitanEmbeddings)
+    # 3. Embed facts (bounded by module-level semaphore inside OpenAICompatibleEmbeddings)
     try:
         embedder = get_embedder()
         fact_vectors = await embedder.aembed_documents([c["fact"] for c in candidates])  # type: ignore[attr-defined]

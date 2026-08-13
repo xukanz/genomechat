@@ -50,12 +50,13 @@ def test_every_configured_agent_model_is_classified_deliberately():
         assert isinstance(LLMService._supports_temperature(model), bool), agent
 
 
-def test_structured_output_never_uses_json_mode():
-    """Anthropic models must use schema-enforced structured output.
+def test_structured_output_defaults_away_from_json_mode():
+    """The models we serve today must use schema-enforced structured output.
 
     ``json_mode`` only asks for JSON in the prompt and parses whatever returns,
     so a model that opens with a sentence of prose raises OutputParserException
     instead of routing. Observed intermittently on Claude 5. Tool calling is
-    enforced provider-side, so this is pinned.
+    enforced provider-side. The method is configurable per endpoint now — this
+    pins the default, so pointing somewhere else is a deliberate act.
     """
-    assert LLMService.STRUCTURED_OUTPUT_METHOD == "function_calling"
+    assert LLMService.structured_output_method() == "function_calling"

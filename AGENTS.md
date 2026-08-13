@@ -220,11 +220,15 @@ The application is container-ready for Kubernetes deployment:
 1. **Backend Deployment**:
    - Directory: `backend/`
    - Environment variables use semicolon (`;`) separator
-   - Required: `OPENAI_API_KEY` (the older `OPENAI_BEDROCK_API_KEY` /
-     `PORTKEY_BEDROCK_API_KEY` names are still accepted, so existing secrets
-     keep working)
-   - Gateway routing headers: `OPENAI_EXTRA_HEADERS` (JSON). A legacy
-     `PORTKEY_BEDROCK_SLUG` is folded in automatically
+   - Required: `OPENAI_BASE_URL;OPENAI_API_KEY` (the older
+     `OPENAI_BEDROCK_API_KEY` / `PORTKEY_BEDROCK_API_KEY` names are still
+     accepted, so existing secrets keep working)
+   - Any OpenAI-compatible endpoint works. Auth defaults to a standard bearer;
+     a gateway that reads the key from a custom header sets
+     `OPENAI_API_KEY_HEADER`, and extra wire headers go in `OPENAI_EXTRA_HEADERS`
+     (JSON). A legacy `PORTKEY_BEDROCK_SLUG` restores both automatically
+   - Endpoint capabilities, all optional: `OPENAI_STRUCTURED_OUTPUT_METHOD`,
+     `OPENAI_NO_TEMPERATURE_MODELS`, `OPENAI_MODEL_PRICES`
    - Automatic HTTPS/TLS via Kubernetes Ingress
 
 2. **Frontend Deployment**:
