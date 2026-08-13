@@ -81,12 +81,9 @@ services:
       - LOG_LEVEL=debug
       - SANDBOX_URL=${SANDBOX_URL:-http://sandbox:8080}
       - R_SANDBOX_URL=${R_SANDBOX_URL:-http://r-sandbox:8081}
-      # OpenAI-compatible gateway. Azure/Bedrock are routes on one endpoint;
-      # the backend also still accepts the old PORTKEY_* names for these.
+      # OpenAI-compatible gateway — one route, used by the agents and the
+      # memory pipeline. The backend also still accepts the old PORTKEY_* names.
       - OPENAI_GATEWAY_BASE_URL=${OPENAI_GATEWAY_BASE_URL}
-      - OPENAI_AZURE_API_KEY=${OPENAI_AZURE_API_KEY}
-      - OPENAI_AZURE_SLUG=${OPENAI_AZURE_SLUG}
-      # Bedrock route — used by the agents and the memory pipeline
       - OPENAI_BEDROCK_API_KEY=${OPENAI_BEDROCK_API_KEY}
       - OPENAI_BEDROCK_SLUG=${OPENAI_BEDROCK_SLUG:-bedrock}
       # Gateway wire-protocol header names. Override only when pointing at a

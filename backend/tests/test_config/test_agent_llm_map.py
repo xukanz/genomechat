@@ -9,7 +9,7 @@ pin the whole set rather than the one key.
 
 import pytest
 
-from src.config.agents import AGENT_LLM_MAP, resolve_agent_llm_config
+from src.config.agents import AGENT_LLM_MAP, resolve_agent_model
 from src.config.settings import settings
 
 # Every literal passed to ``LLMService.get_llm_by_agent`` across src/, plus the
@@ -33,10 +33,8 @@ def test_every_agent_used_in_src_is_mapped():
 
 
 @pytest.mark.parametrize("agent_name", sorted(REQUIRED_AGENTS))
-def test_each_agent_resolves_to_provider_and_model(agent_name):
-    provider, model = resolve_agent_llm_config(agent_name)
-    assert provider, f"{agent_name} resolved to an empty provider"
-    assert model, f"{agent_name} resolved to an empty model"
+def test_each_agent_resolves_to_a_model(agent_name):
+    assert resolve_agent_model(agent_name), f"{agent_name} resolved to an empty model"
 
 
 def test_memory_extraction_agent_setting_is_mapped():
@@ -46,4 +44,4 @@ def test_memory_extraction_agent_setting_is_mapped():
 
 def test_unknown_agent_raises():
     with pytest.raises(ValueError, match="not found in AGENT_LLM_MAP"):
-        resolve_agent_llm_config("no_such_agent")
+        resolve_agent_model("no_such_agent")

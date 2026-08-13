@@ -184,7 +184,7 @@ Then log the revocation with the same audit-row template (`scopes_used: ["admin:
 
 ## Token and cost accuracy
 
-- **OpenAI / Azure gateway path** — tokens reported by `response.usage_metadata` or `response_metadata["token_usage"]`. Accuracy is post-call authoritative (±0% when present). `tiktoken` is used only for pre-call estimation paths (±2% on list-priced models).
+- **OpenAI-compatible gateway path** — tokens reported by `response.usage_metadata` or `response_metadata["token_usage"]`. Accuracy is post-call authoritative (±0% when present). `tiktoken` is used only for pre-call estimation paths (±2% on list-priced models).
 - **Anthropic / Bedrock path** — same `usage_metadata` source; verified in the pre-phase spike. No `tiktoken` involvement.
 - **Cost** — derived from `compute_cost(model, input_tokens, output_tokens)` with a per-model USD table in `observability/cost.py`. Unknown models return `$0.00` (logged at DEBUG); update the price table alongside any model rollout.
 

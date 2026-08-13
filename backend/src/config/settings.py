@@ -31,8 +31,6 @@ logger = logging.getLogger(__name__)
 # the vault keys up front removes the ambiguity.
 _LEGACY_SECRET_KEYS = {
     "portkey_base_url": "openai_gateway_base_url",
-    "portkey_azure_api_key": "openai_azure_api_key",
-    "portkey_azure_slug": "openai_azure_slug",
     "portkey_bedrock_api_key": "openai_bedrock_api_key",
     "portkey_bedrock_slug": "openai_bedrock_slug",
 }
@@ -160,53 +158,40 @@ class Settings(BaseSettings):
 
     # OpenAI-compatible gateway configuration.
     #
-    # Azure/Bedrock are routes behind a single OpenAI-compatible endpoint,
-    # not separate SDKs. Each route authenticates with its own key + slug, sent
-    # in headers rather than in the OpenAI `api_key` field.
+    # Every model is served by one route behind an OpenAI-compatible endpoint,
+    # not by a vendor SDK. The route authenticates with a key + slug sent in
+    # headers rather than in the OpenAI `api_key` field.
     #
     # Every field below also accepts its pre-rename `PORTKEY_*` env var so that
     # already-deployed environments keep working without a secret rotation.
     # Deliberately not `OPENAI_BASE_URL`: the openai SDK reads that name itself,
-    # so exporting it would also redirect the direct-OpenAI provider at the
-    # gateway.
+    # so exporting it would redirect unrelated OpenAI clients at this gateway.
     openai_gateway_base_url: str = Field(
         default="",
         validation_alias=AliasChoices("openai_gateway_base_url", "portkey_base_url"),
         description="Base URL of the OpenAI-compatible gateway",
     )
 
-    # Azure Route (Required - primary route)
-    openai_azure_api_key: str = Field(
+    # Bedrock Route (Required — every agent runs on it)
+    openai_bedrock_api_key: str = Field(
         ...,
-        validation_alias=AliasChoices("openai_azure_api_key", "portkey_azure_api_key"),
-        description="API key for the Azure route",
-    )
-    openai_azure_slug: str = Field(
-        ...,
-        validation_alias=AliasChoices("openai_azure_slug", "portkey_azure_slug"),
-        description="Gateway slug for the Azure route",
-    )
-
-    # Bedrock Route (Optional)
-    openai_bedrock_api_key: str | None = Field(
-        None,
         validation_alias=AliasChoices("openai_bedrock_api_key", "portkey_bedrock_api_key"),
         description="API key for the Bedrock route",
     )
-    openai_bedrock_slug: str | None = Field(
-        None,
+    openai_bedrock_slug: str = Field(
+        ...,
         validation_alias=AliasChoices("openai_bedrock_slug", "portkey_bedrock_slug"),
         description="Gateway slug for the Bedrock route",
     )
 
-    # The gateway authenticates per-route via custom headers rather than the
-    # OpenAI `Authorization` field. Header *names* are the gateway's wire
-    # protocol, so they are configurable — the defaults match the gateway we run
-    # today, and pointing at a different OpenAI-compatible gateway is an env
-    # change rather than a code change.
+    # The gateway authenticates via custom headers rather than the OpenAI
+    # `Authorization` field. Header *names* are the gateway's wire protocol, so
+    # they are configurable — the defaults match the gateway we run today, and
+    # pointing at a different OpenAI-compatible gateway is an env change rather
+    # than a code change.
     #
     # Named `openai_gateway_*` so they don't read like the unrelated
-    # `OPENAI_API_KEY` used by the direct-OpenAI provider in src/service/llm.py.
+    # `OPENAI_API_KEY` that the openai SDK picks up on its own.
     openai_gateway_api_key_header: str = Field(
         default="x-portkey-api-key",
         min_length=1,
@@ -247,8 +232,10 @@ class Settings(BaseSettings):
     )
 
     # LLM Configuration
-    llm_provider: str = Field(default="openai_azure", description="LLM provider to use")
-    llm_model: str = Field(default="gpt-4o-mini", description="LLM model to use")
+    #
+    # `llm_provider` and `llm_model` used to live here, defaulting to the Azure
+    # route and gpt-4o-mini. Nothing read them — models come from
+    # src/config/agents.py — and both named a route that no longer exists.
     llm_temperature: float = Field(
         default=0.7,
         ge=0.0,
@@ -626,37 +613,15 @@ class Settings(BaseSettings):
         """Parse CORS origins string into list."""
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
-    def get_openai_headers(self, provider: str = "azure") -> dict[str, str]:
-        """Get OpenAI-compatible gateway auth headers for the given route.
-
-        Args:
-            provider: Route name (azure or bedrock)
+    def get_openai_headers(self) -> dict[str, str]:
+        """Get the OpenAI-compatible gateway's auth headers.
 
         Returns:
-            Dictionary of headers authenticating that route
-
-        Raises:
-            ValueError: If the route is not supported or not configured
+            Dictionary of headers authenticating against the gateway
         """
-        provider = provider.lower()
-
-        if provider == "azure":
-            api_key = self.openai_azure_api_key
-            slug = self.openai_azure_slug
-        elif provider == "bedrock":
-            if not self.openai_bedrock_api_key or not self.openai_bedrock_slug:
-                raise ValueError(
-                    "Bedrock route not configured. "
-                    "Set OPENAI_BEDROCK_API_KEY and OPENAI_BEDROCK_SLUG"
-                )
-            api_key = self.openai_bedrock_api_key
-            slug = self.openai_bedrock_slug
-        else:
-            raise ValueError(f"Unsupported route: {provider}. Must be one of: azure, bedrock")
-
         return {
-            self.openai_gateway_api_key_header: api_key,
-            self.openai_gateway_slug_header: slug,
+            self.openai_gateway_api_key_header: self.openai_bedrock_api_key,
+            self.openai_gateway_slug_header: self.openai_bedrock_slug,
         }
 
 

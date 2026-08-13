@@ -12,13 +12,12 @@ from langchain_openai import ChatOpenAI
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from src.config.llm import GATEWAY_ROUTES, ProviderType, normalize_provider
-from src.config.agents import resolve_agent_llm_config
+from src.config.agents import resolve_agent_model
 from src.config.settings import settings
 
-# The gateway ignores the OpenAI `api_key` field — every route authenticates via
+# The gateway ignores the OpenAI `api_key` field — it authenticates via
 # `settings.get_openai_headers()` instead — but the OpenAI client requires the
-# field to be non-empty, so the routes below pass this inert placeholder.
+# field to be non-empty, so pass this inert placeholder.
 _GATEWAY_PLACEHOLDER_API_KEY = "unused"
 
 
@@ -87,89 +86,42 @@ class LLMService:
             for no_temp_model in cls._NO_TEMPERATURE_MODELS
         )
 
-    @classmethod
-    def _get_openai_headers(cls, provider: str) -> dict:
-        """Get OpenAI-compatible gateway auth headers for the specified route."""
-        return settings.get_openai_headers(provider=provider)
-
-    @staticmethod
-    def get_structured_output_method(provider: str) -> str:
-        """Get the appropriate structured output method for a provider.
-
-        The Bedrock route serves Anthropic models, which use ``function_calling``
-        rather than ``json_mode``. ``json_mode`` is not schema-enforced — it asks
-        for JSON in the prompt and parses whatever comes back — so a model that
-        opens with a sentence of explanation raises ``OutputParserException``
-        instead of routing. That failed intermittently on Claude 5, which is more
-        inclined to narrate. Tool calling is schema-enforced at the provider, so
-        prose cannot leak through.
-
-        Callers must use ``streaming=False``; Bedrock rejects tool use with
-        streaming enabled.
-
-        Args:
-            provider: Provider type (from ProviderType enum)
-
-        Returns:
-            Method string: 'function_calling' for Bedrock, 'json_schema' otherwise
-        """
-        provider = normalize_provider(provider)
-
-        if provider == ProviderType.OPENAI_BEDROCK:
-            return "function_calling"
-        # Default to json_schema for the Azure route and anything unrecognized
-        return "json_schema"
-
-    @classmethod
-    def get_structured_output_method_for_agent(cls, agent_name: str) -> str:
-        """Get the appropriate structured output method for an agent.
-
-        Args:
-            agent_name: Name of the agent
-
-        Returns:
-            Method string based on agent's configured provider
-        """
-        provider, _ = resolve_agent_llm_config(agent_name)
-        return cls.get_structured_output_method(provider)
+    # Structured output method for every model we serve.
+    #
+    # The gateway's Bedrock route serves Anthropic models, which need
+    # ``function_calling`` rather than ``json_mode``. ``json_mode`` is not
+    # schema-enforced — it asks for JSON in the prompt and parses whatever comes
+    # back — so a model that opens with a sentence of explanation raises
+    # ``OutputParserException`` instead of routing. That failed intermittently on
+    # Claude 5, which is more inclined to narrate. Tool calling is schema-enforced
+    # at the provider, so prose cannot leak through.
+    #
+    # Callers must use ``streaming=False``; Bedrock rejects tool use with
+    # streaming enabled.
+    STRUCTURED_OUTPUT_METHOD = "function_calling"
 
     @classmethod
     def create_llm(
-        cls, provider: str, model: str, temperature: float = 0.7, streaming: bool = True, **kwargs
+        cls, model: str, temperature: float = 0.7, streaming: bool = True, **kwargs
     ) -> BaseChatModel:
         """Low-level factory for LLM instances.
 
-        Every provider is a route on the same OpenAI-compatible gateway, so the
-        construction is identical apart from which route's auth headers are
-        attached.
+        Every model is served by one route on an OpenAI-compatible gateway, so
+        the only thing that varies between calls is the model name.
 
         Args:
-            provider: Provider name (openai_azure, openai_bedrock);
-                pre-rename ``portkey_*`` names are still accepted
             model: Model name
             temperature: Temperature setting (ignored for reasoning models)
             streaming: Enable streaming responses
-            **kwargs: Additional provider-specific parameters
+            **kwargs: Additional parameters forwarded to ChatOpenAI
 
         Returns:
             Configured LLM instance
-
-        Raises:
-            ValueError: If provider is not supported
         """
-        provider = normalize_provider(provider)
-        try:
-            route = GATEWAY_ROUTES[ProviderType(provider)]
-        except ValueError:
-            supported = ", ".join(sorted(p.value for p in GATEWAY_ROUTES))
-            raise ValueError(
-                f"Unsupported provider: {provider}. Must be one of: {supported}"
-            ) from None
-
         llm_kwargs = {
             "model": model,
             "base_url": settings.openai_gateway_base_url,
-            "default_headers": cls._get_openai_headers(provider=route),
+            "default_headers": settings.get_openai_headers(),
             "api_key": _GATEWAY_PLACEHOLDER_API_KEY,
             "streaming": streaming,
             "timeout": 600,  # 10 minutes for long streaming responses
@@ -183,28 +135,6 @@ class LLMService:
         return ChatOpenAI(**_inject_callbacks(llm_kwargs))
 
     @classmethod
-    def get_llm_by_provider(
-        cls, provider: str, model: str, temperature: float = 0.7, streaming: bool = True, **kwargs
-    ) -> BaseChatModel:
-        """Get LLM for specific provider and model.
-
-        Convenience wrapper around create_llm with common defaults.
-
-        Args:
-            provider: Provider name
-            model: Model name
-            temperature: Temperature setting (default: 0.7)
-            streaming: Enable streaming responses (default: True)
-            **kwargs: Additional provider-specific parameters
-
-        Returns:
-            Configured LLM instance
-        """
-        return cls.create_llm(
-            provider=provider, model=model, temperature=temperature, streaming=streaming, **kwargs
-        )
-
-    @classmethod
     def get_llm_by_agent(
         cls, agent_name: str, temperature: Optional[float] = None, streaming: bool = True, **kwargs
     ) -> BaseChatModel:
@@ -214,7 +144,7 @@ class LLMService:
             agent_name: Name of the agent
             temperature: Temperature setting (uses default if not provided)
             streaming: Enable streaming responses (default: True)
-            **kwargs: Additional provider-specific parameters
+            **kwargs: Additional parameters forwarded to ChatOpenAI
 
         Returns:
             Configured LLM instance
@@ -222,12 +152,10 @@ class LLMService:
         Raises:
             ValueError: If agent_name is not found
         """
-        provider, model = resolve_agent_llm_config(agent_name)
+        model = resolve_agent_model(agent_name)
 
         # Use default temperature if not provided
         if temperature is None:
             temperature = 0.7
 
-        return cls.create_llm(
-            provider=provider, model=model, temperature=temperature, streaming=streaming, **kwargs
-        )
+        return cls.create_llm(model=model, temperature=temperature, streaming=streaming, **kwargs)

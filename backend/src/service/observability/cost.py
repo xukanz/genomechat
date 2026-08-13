@@ -19,7 +19,9 @@ _PRICE_TABLE_USD_PER_MTOK: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.00, 5.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-opus-4-6": (15.00, 75.00),
-    # OpenAI via Azure (approximate; negotiated enterprise rates may differ)
+    # OpenAI models (approximate; negotiated enterprise rates may differ). Not
+    # currently reachable — every agent runs on the Bedrock route — but kept so
+    # a gpt-* rollout doesn't silently report zero cost.
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-5-mini": (0.25, 2.00),
 }

@@ -12,7 +12,6 @@ class TestOrchestratorMiddleware:
         """Helper to create orchestrator agent with mocked LLM services."""
         with patch("src.agents.orchestrator.LLMService") as mock_llm_service:
             mock_llm_service.get_llm_by_agent.return_value = MagicMock()
-            mock_llm_service.get_structured_output_method_for_agent.return_value = "function_calling"
             with patch("src.agents.orchestrator.create_agent") as mock_create:
                 mock_create.return_value = MagicMock()
                 with patch(
@@ -78,9 +77,7 @@ class TestContextSettings:
         the workers. Cost is a judgement call rather than an invariant, so only
         resolvability is asserted here.
         """
-        from src.config.agents import AGENT_LLM_MAP, resolve_agent_llm_config
+        from src.config.agents import AGENT_LLM_MAP, resolve_agent_model
 
         assert "summarizer" in AGENT_LLM_MAP
-        provider, model = resolve_agent_llm_config("summarizer")
-        assert provider
-        assert model
+        assert resolve_agent_model("summarizer")

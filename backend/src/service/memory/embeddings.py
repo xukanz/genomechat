@@ -47,7 +47,7 @@ class BedrockTitanEmbeddings(Embeddings):
                 "openai is required for BedrockTitanEmbeddings. Install with: uv add openai"
             ) from exc
 
-        headers = settings.get_openai_headers(provider="bedrock")
+        headers = settings.get_openai_headers()
         self._client = openai.OpenAI(
             # Inert — the gateway authenticates from `headers`, but the OpenAI
             # client requires a non-empty api_key.

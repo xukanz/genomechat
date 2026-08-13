@@ -45,31 +45,16 @@ def test_temperature_is_sent(model):
 
 def test_every_configured_agent_model_is_classified_deliberately():
     """Every model actually wired up must resolve without raising."""
-    for agent, (_provider, model) in AGENT_LLM_MAP.items():
+    for agent, model in AGENT_LLM_MAP.items():
         assert isinstance(LLMService._supports_temperature(model), bool), agent
 
 
-class TestStructuredOutputMethod:
+def test_structured_output_never_uses_json_mode():
     """Anthropic models must use schema-enforced structured output.
 
     ``json_mode`` only asks for JSON in the prompt and parses whatever returns,
-    so a model that opens with a sentence of prose raises
-    OutputParserException instead of routing. Observed intermittently on
-    Claude 5. Tool calling is enforced provider-side, so this is pinned.
+    so a model that opens with a sentence of prose raises OutputParserException
+    instead of routing. Observed intermittently on Claude 5. Tool calling is
+    enforced provider-side, so this is pinned.
     """
-
-    def test_bedrock_route_uses_function_calling(self):
-        from src.config.llm import ProviderType
-
-        method = LLMService.get_structured_output_method(ProviderType.OPENAI_BEDROCK)
-        assert method == "function_calling"
-
-    def test_azure_route_uses_json_schema(self):
-        from src.config.llm import ProviderType
-
-        method = LLMService.get_structured_output_method(ProviderType.OPENAI_AZURE)
-        assert method == "json_schema"
-
-    def test_no_agent_resolves_to_json_mode(self):
-        for agent in AGENT_LLM_MAP:
-            assert LLMService.get_structured_output_method_for_agent(agent) != "json_mode"
+    assert LLMService.STRUCTURED_OUTPUT_METHOD == "function_calling"
