@@ -20,7 +20,7 @@ export const en: LandingCopy = {
     stats: {
       records: 'Queryable rows',
       agents: 'Collaborating agents',
-      databases: 'Database types',
+      tools: 'Agent tools',
       sources: 'Public data sources',
     },
   },
@@ -91,8 +91,14 @@ export const en: LandingCopy = {
   },
   databases: {
     eyebrow: 'Data infrastructure',
-    title: 'Multi-database architecture',
-    subtitle: 'Seven database types with runtime switching — no restart required',
+    title: 'A pluggable data layer',
+    subtitle:
+      'Three data profiles switch at runtime across SQLite and DuckDB — no restart required',
+    groups: {
+      inUse: 'In use',
+      available: 'Connector implemented',
+      availableNote: 'Supported by the connection layer; no shipped profile uses these yet',
+    },
     items: {
       sqlite: 'ClinVar variant archive',
       duckdb: 'GWAS / Ensembl Parquet analytics',
@@ -100,7 +106,6 @@ export const en: LandingCopy = {
       postgres: 'Enterprise SQL',
       mssql: 'Microsoft SQL Server',
       athena: 'AWS serverless SQL',
-      mongodb: 'Checkpoints and metadata',
     },
   },
   useCases: {

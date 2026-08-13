@@ -34,7 +34,7 @@ export interface LandingCopy {
     stats: {
       records: string
       agents: string
-      databases: string
+      tools: string
       sources: string
     }
   }
@@ -92,6 +92,12 @@ export interface LandingCopy {
     eyebrow: string
     title: string
     subtitle: string
+    /** Group headings separating engines in use from unused connectors. */
+    groups: {
+      inUse: string
+      available: string
+      availableNote: string
+    }
     items: {
       sqlite: string
       duckdb: string
@@ -99,7 +105,6 @@ export interface LandingCopy {
       postgres: string
       mssql: string
       athena: string
-      mongodb: string
     }
   }
   useCases: {

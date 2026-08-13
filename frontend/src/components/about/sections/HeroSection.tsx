@@ -11,7 +11,7 @@ import { formatCount } from "../../../lib/formatCount"
 import { BRANDING } from "../../../config/branding"
 import {
   AGENT_COUNT,
-  DATABASE_TYPE_COUNT,
+  AGENT_TOOL_COUNT,
   DATA_SOURCE_COUNT,
   TOTAL_ROWS,
 } from "../../../config/landing/facts"
@@ -110,7 +110,7 @@ export function HeroSection({ onCTA }: { onCTA: () => void }) {
         >
           <StatCard value={TOTAL_ROWS} label={copy.hero.stats.records} format={abbreviate} />
           <StatCard value={AGENT_COUNT} label={copy.hero.stats.agents} />
-          <StatCard value={DATABASE_TYPE_COUNT} label={copy.hero.stats.databases} />
+          <StatCard value={AGENT_TOOL_COUNT} label={copy.hero.stats.tools} />
           <StatCard value={DATA_SOURCE_COUNT} label={copy.hero.stats.sources} />
         </motion.div>
 

@@ -30,10 +30,11 @@ export const VARIANT_AND_ASSOCIATION_ROWS = CLINVAR_ROWS + GWAS_ASSOCIATION_ROWS
 export const AGENT_COUNT = 5
 
 /**
- * Connection implementations in backend/src/service/database/connections/:
- * sqlite, duckdb, mysql, postgres, mssql, athena, mongodb.
+ * LangChain tools defined in backend/src/tools/ — every function carrying the
+ * @tool decorator, across database, file, code-execution, literature,
+ * planning and SQL-pipeline modules. Not all of them go to every agent.
  */
-export const DATABASE_TYPE_COUNT = 7
+export const AGENT_TOOL_COUNT = 16
 
 /** Public genomics resources shipped as profiles: ClinVar, GWAS Catalog, Ensembl. */
 export const DATA_SOURCE_COUNT = 3

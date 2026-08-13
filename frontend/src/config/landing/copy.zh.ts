@@ -19,7 +19,7 @@ export const zh: LandingCopy = {
     stats: {
       records: '可查询数据行',
       agents: '协作智能体',
-      databases: '数据库类型',
+      tools: '智能体工具',
       sources: '公共数据源',
     },
   },
@@ -83,8 +83,13 @@ export const zh: LandingCopy = {
   },
   databases: {
     eyebrow: '数据基础设施',
-    title: '多数据库架构',
-    subtitle: '支持 7 种数据库，运行时切换，无需重启',
+    title: '可插拔的数据接入层',
+    subtitle: '三个数据 profile 在 SQLite 与 DuckDB 上运行时切换，无需重启',
+    groups: {
+      inUse: '当前在用',
+      available: '连接器已实现',
+      availableNote: '接入层已支持，目前尚无内置 profile 使用',
+    },
     items: {
       sqlite: 'ClinVar 变异档案',
       duckdb: 'GWAS / Ensembl Parquet 分析',
@@ -92,7 +97,6 @@ export const zh: LandingCopy = {
       postgres: '企业级 SQL',
       mssql: 'Microsoft SQL Server',
       athena: 'AWS 无服务器 SQL',
-      mongodb: '检查点与元数据',
     },
   },
   useCases: {
