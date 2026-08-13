@@ -4,7 +4,9 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip, PieCha
 const dataScale = [
   { name: "ClinVar", records: 4480843, color: "#0066CC" },
   { name: "GWAS associations", records: 1188619, color: "#22C55E" },
-  { name: "GWAS studies", records: 229607, color: "#A855F7" }
+  { name: "GWAS studies", records: 229607, color: "#A855F7" },
+  { name: "Ensembl exons", records: 5087789, color: "#F97316" },
+  { name: "Ensembl transcripts", records: 646577, color: "#14B8A6" }
 ]
 
 const agentUsage = [

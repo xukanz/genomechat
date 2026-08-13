@@ -12,9 +12,10 @@ schema:
   tables:
     genes:
       description: >
-        One row per annotated gene, roughly 78,000 rows. `gene_id` is unique.
-        IMPORTANT: `gene_name` is NULL for a large fraction of genes — novel
-        lncRNAs and pseudogenes carry no HGNC symbol — so filter
+        One row per annotated gene, 78,941 rows, of which 20,131 are
+        protein_coding. `gene_id` is unique. IMPORTANT: `gene_name` is NULL for
+        45% of genes — only 43,458 carry an HGNC symbol, because novel lncRNAs
+        and pseudogenes have none — so filter
         `gene_name IS NOT NULL` before grouping or joining by symbol, and never
         assume a gene has one. This table includes genes on unplaced scaffolds
         and alt haplotypes as well as real chromosomes; add
@@ -41,8 +42,8 @@ schema:
         - name: gene_name
           type: varchar
           description: >
-            HGNC symbol, e.g. TP53. NULL for a large fraction of genes. This is
-            the column to match when a user names a gene.
+            HGNC symbol, e.g. TP53. NULL for 45% of genes. This is the column
+            to match when a user names a gene.
         - name: gene_biotype
           type: varchar
           description: >
@@ -101,8 +102,9 @@ schema:
 
     transcripts:
       description: >
-        One row per transcript, roughly 280,000 rows. `gene_name` is
-        denormalised here so gene-symbol questions need no join to `genes`.
+        One row per transcript, 646,577 rows, 19,299 of them MANE Select.
+        `gene_name` is denormalised here so gene-symbol questions need no join
+        to `genes`.
         CRITICAL: `spliced_length` (sum of exon lengths, i.e. the mature RNA)
         and `genomic_length` (end - start + 1, introns included) are different
         numbers and are not interchangeable — "transcript length" almost always
@@ -202,10 +204,11 @@ schema:
 
     exons:
       description: >
-        One row per exon OCCURRENCE IN A TRANSCRIPT, roughly 1.7 million rows.
-        An exon shared by several transcripts appears once per transcript, so
-        COUNT(*) counts occurrences while COUNT(DISTINCT exon_id) counts
-        distinct exons — choose deliberately. CRITICAL: `exon_number` is
+        One row per exon OCCURRENCE IN A TRANSCRIPT: 5,087,789 rows covering
+        1,322,941 distinct exons, so the average exon is shared by nearly four
+        transcripts. COUNT(*) counts occurrences while COUNT(DISTINCT exon_id)
+        counts exons, and the two differ by a factor of 3.8 — choose
+        deliberately. CRITICAL: `exon_number` is
         transcription order, not coordinate order. On the minus strand exon 1
         has the HIGHEST coordinates. Use ORDER BY exon_number for biological
         order and ORDER BY start for genomic order; they are reversed for
@@ -245,8 +248,9 @@ schema:
 
     chromosomes:
       description: >
-        Sequence lengths for the GRCh38 assembly, taken from the Ensembl FASTA
-        index, restricted to sequences that actually carry annotated genes. Join
+        Sequence lengths for the GRCh38 assembly, 70 rows, taken from the
+        Ensembl FASTA index and restricted to sequences that carry annotated
+        genes. Join
         to genes.chromosome for density calculations — raw gene counts are
         misleading because chromosome 1 is roughly five times the length of
         chromosome 21. This is the only source of sequence length; the GTF does
