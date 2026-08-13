@@ -15,11 +15,6 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from src.config.agents import resolve_agent_model
 from src.config.settings import settings
 
-# The gateway ignores the OpenAI `api_key` field — it authenticates via
-# `settings.get_openai_headers()` instead — but the OpenAI client requires the
-# field to be non-empty, so pass this inert placeholder.
-_GATEWAY_PLACEHOLDER_API_KEY = "unused"
-
 
 def _observability_callbacks() -> list[BaseCallbackHandler]:
     """Return observability callbacks to attach to every LLM instance.
@@ -120,9 +115,9 @@ class LLMService:
         """
         llm_kwargs = {
             "model": model,
-            "base_url": settings.openai_gateway_base_url,
+            "base_url": settings.openai_base_url,
             "default_headers": settings.get_openai_headers(),
-            "api_key": _GATEWAY_PLACEHOLDER_API_KEY,
+            "api_key": settings.openai_api_key,
             "streaming": streaming,
             "timeout": 600,  # 10 minutes for long streaming responses
             "max_retries": 3,  # Retry on connection failures

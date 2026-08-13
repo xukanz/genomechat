@@ -77,7 +77,7 @@ class TestContextSettings:
         the workers. Cost is a judgement call rather than an invariant, so only
         resolvability is asserted here.
         """
-        from src.config.agents import AGENT_LLM_MAP, resolve_agent_model
+        from src.config.agents import AGENT_MODEL_SETTINGS, resolve_agent_model
 
-        assert "summarizer" in AGENT_LLM_MAP
+        assert "summarizer" in AGENT_MODEL_SETTINGS
         assert resolve_agent_model("summarizer")

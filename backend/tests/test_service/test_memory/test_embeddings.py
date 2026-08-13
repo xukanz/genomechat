@@ -22,8 +22,8 @@ def _bedrock_settings(monkeypatch):
     """Ensure Bedrock-route creds pass `settings.get_openai_headers("bedrock")`."""
     from src.config.settings import settings as s
 
-    monkeypatch.setattr(s, "openai_bedrock_api_key", "test-bedrock-key")
-    monkeypatch.setattr(s, "openai_bedrock_slug", "test-bedrock-slug")
+    monkeypatch.setattr(s, "openai_api_key", "test-bedrock-key")
+    monkeypatch.setattr(s, "openai_extra_headers", {"x-portkey-slug": "test-bedrock-slug"})
 
 
 def _mock_openai_client(vector: list[float]):
@@ -84,9 +84,9 @@ def test_embed_documents_loops_one_at_a_time(monkeypatch):
     assert fake_client.embeddings.create.call_count == 3
 
 
-def test_client_is_constructed_with_gateway_headers(monkeypatch):
-    """Default header names are the gateway's wire protocol — deployed envs
-    depend on them staying `x-portkey-*` unless explicitly overridden."""
+def test_client_is_constructed_with_gateway_auth(monkeypatch):
+    """The embedder must authenticate the same way the chat models do —
+    bearer key plus the gateway's own headers."""
     from src.service.memory import embeddings as emb_mod
 
     captured: dict = {}
@@ -101,7 +101,7 @@ def test_client_is_constructed_with_gateway_headers(monkeypatch):
     monkeypatch.setattr(openai, "OpenAI", _FakeOpenAI)
     emb_mod.BedrockTitanEmbeddings()
 
-    assert captured["api_key"] == "unused"
+    assert captured["api_key"] == "test-bedrock-key"
     assert captured["default_headers"]["x-portkey-api-key"] == "test-bedrock-key"
     assert captured["default_headers"]["x-portkey-slug"] == "test-bedrock-slug"
 

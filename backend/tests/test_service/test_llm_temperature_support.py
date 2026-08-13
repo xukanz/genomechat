@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.config.agents import AGENT_LLM_MAP
+from src.config.agents import AGENT_MODEL_SETTINGS, resolve_agent_model
 from src.service.llm import LLMService
 
 NO_TEMPERATURE = [
@@ -45,7 +45,8 @@ def test_temperature_is_sent(model):
 
 def test_every_configured_agent_model_is_classified_deliberately():
     """Every model actually wired up must resolve without raising."""
-    for agent, model in AGENT_LLM_MAP.items():
+    for agent in AGENT_MODEL_SETTINGS:
+        model = resolve_agent_model(agent)
         assert isinstance(LLMService._supports_temperature(model), bool), agent
 
 

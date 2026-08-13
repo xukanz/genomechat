@@ -16,8 +16,11 @@ The application is container-ready for Kubernetes deployment:
 1. **Backend Deployment**:
    - Directory: `backend/`
    - Environment variables use semicolon (`;`) separator
-   - Required: `OPENAI_BEDROCK_API_KEY;OPENAI_BEDROCK_SLUG` (the pre-rename
-     `PORTKEY_*` names are still accepted, so existing secrets keep working)
+   - Required: `OPENAI_API_KEY` (the older `OPENAI_BEDROCK_API_KEY` /
+     `PORTKEY_BEDROCK_API_KEY` names are still accepted, so existing secrets
+     keep working)
+   - Gateway routing headers: `OPENAI_EXTRA_HEADERS` (JSON). A legacy
+     `PORTKEY_BEDROCK_SLUG` is folded in automatically
    - Automatic HTTPS/TLS via Kubernetes Ingress
 
 2. **Frontend Deployment**:

@@ -49,10 +49,8 @@ class BedrockTitanEmbeddings(Embeddings):
 
         headers = settings.get_openai_headers()
         self._client = openai.OpenAI(
-            # Inert — the gateway authenticates from `headers`, but the OpenAI
-            # client requires a non-empty api_key.
-            api_key="unused",
-            base_url=settings.openai_gateway_base_url,
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
             default_headers=headers,
             timeout=60.0,
             max_retries=3,

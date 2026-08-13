@@ -4,36 +4,45 @@ Uses Pydantic Settings to load and validate configuration from environment varia
 Supports optional Vault Secrets via /secrets/secret.yaml.
 """
 
+import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, TYPE_CHECKING
+from typing import Annotated, Any, Callable, TYPE_CHECKING
 
 try:
     import yaml
 except ImportError:
     yaml = None  # type: ignore
 
-from pydantic import AliasChoices, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 if TYPE_CHECKING:
     from src.config.database import DatabaseSettings
 
 logger = logging.getLogger(__name__)
 
-# Gateway settings were renamed from `portkey_*` to `openai_*`. Env and dotenv
-# still accept the old names via each field's `AliasChoices`, but the vault
-# source below builds a plain dict that is merged *before* alias resolution: a
-# legacy `portkey_*` vault key and a new `openai_*` env var would then both be
-# present, and `AliasChoices` picks its first choice — silently letting env win
-# over vault, inverting the documented Vault > Env precedence. Canonicalizing
-# the vault keys up front removes the ambiguity.
+# The gateway settings have been renamed twice — first off the vendor name
+# (`portkey_*`), then onto the conventional OpenAI shape. Env and dotenv accept
+# every old name through each field's `AliasChoices`, but the vault source below
+# builds a plain dict that is merged *before* alias resolution: a legacy vault
+# key and a current env var would then both be present, and `AliasChoices` picks
+# its first choice — silently letting env win over vault, inverting the
+# documented Vault > Env precedence. Canonicalizing vault keys up front removes
+# the ambiguity.
 _LEGACY_SECRET_KEYS = {
-    "portkey_base_url": "openai_gateway_base_url",
-    "portkey_bedrock_api_key": "openai_bedrock_api_key",
-    "portkey_bedrock_slug": "openai_bedrock_slug",
+    "portkey_base_url": "openai_base_url",
+    "openai_gateway_base_url": "openai_base_url",
+    "portkey_bedrock_api_key": "openai_api_key",
+    "openai_bedrock_api_key": "openai_api_key",
+    "portkey_bedrock_slug": "openai_slug",
+    "openai_bedrock_slug": "openai_slug",
 }
+
+# Header the slug travelled in before it moved into `openai_extra_headers`.
+# Only used to keep legacy `openai_slug` configuration working.
+_LEGACY_SLUG_HEADER = "x-portkey-slug"
 
 
 def load_vault_secrets() -> dict[str, Any]:
@@ -158,50 +167,93 @@ class Settings(BaseSettings):
 
     # OpenAI-compatible gateway configuration.
     #
-    # Every model is served by one route behind an OpenAI-compatible endpoint,
-    # not by a vendor SDK. The route authenticates with a key + slug sent in
-    # headers rather than in the OpenAI `api_key` field.
-    #
-    # Every field below also accepts its pre-rename `PORTKEY_*` env var so that
-    # already-deployed environments keep working without a secret rotation.
-    # Deliberately not `OPENAI_BASE_URL`: the openai SDK reads that name itself,
-    # so exporting it would redirect unrelated OpenAI clients at this gateway.
-    openai_gateway_base_url: str = Field(
+    # Deliberately the conventional OpenAI names: every model is served by one
+    # OpenAI-compatible endpoint, not by a vendor SDK, so the config reads the
+    # way any OpenAI-compatible tool expects. Each field also accepts the names
+    # it had before this rename, so deployed environments keep working without
+    # a secret rotation.
+    openai_base_url: str = Field(
         default="",
-        validation_alias=AliasChoices("openai_gateway_base_url", "portkey_base_url"),
+        validation_alias=AliasChoices(
+            "openai_base_url", "openai_gateway_base_url", "portkey_base_url"
+        ),
         description="Base URL of the OpenAI-compatible gateway",
     )
-
-    # Bedrock Route (Required — every agent runs on it)
-    openai_bedrock_api_key: str = Field(
+    openai_api_key: str = Field(
         ...,
-        validation_alias=AliasChoices("openai_bedrock_api_key", "portkey_bedrock_api_key"),
-        description="API key for the Bedrock route",
-    )
-    openai_bedrock_slug: str = Field(
-        ...,
-        validation_alias=AliasChoices("openai_bedrock_slug", "portkey_bedrock_slug"),
-        description="Gateway slug for the Bedrock route",
+        validation_alias=AliasChoices(
+            "openai_api_key", "openai_bedrock_api_key", "portkey_bedrock_api_key"
+        ),
+        description="API key for the OpenAI-compatible gateway",
     )
 
-    # The gateway authenticates via custom headers rather than the OpenAI
-    # `Authorization` field. Header *names* are the gateway's wire protocol, so
-    # they are configurable — the defaults match the gateway we run today, and
-    # pointing at a different OpenAI-compatible gateway is an env change rather
-    # than a code change.
-    #
-    # Named `openai_gateway_*` so they don't read like the unrelated
-    # `OPENAI_API_KEY` that the openai SDK picks up on its own.
-    openai_gateway_api_key_header: str = Field(
+    # Our gateway reads the key from a custom header rather than the standard
+    # `Authorization` bearer, so the key is sent in both places: the bearer is
+    # what the name promises, the header is what this gateway actually checks.
+    # Set to "" for a gateway that only wants the bearer.
+    openai_api_key_header: str = Field(
         default="x-portkey-api-key",
-        min_length=1,
-        description="Header carrying the route API key on the OpenAI-compatible gateway",
+        description="Header to also carry the API key in ('' = bearer only)",
     )
-    openai_gateway_slug_header: str = Field(
-        default="x-portkey-slug",
-        min_length=1,
-        description="Header carrying the route slug on the OpenAI-compatible gateway",
+    # Anything else the gateway needs on the wire — routing slugs, tenant ids.
+    # JSON object in env: OPENAI_EXTRA_HEADERS={"x-portkey-slug":"bedrock"}
+    #
+    # `NoDecode` because pydantic-settings JSON-decodes complex fields inside the
+    # env source, before any validator runs — an empty `OPENAI_EXTRA_HEADERS=`
+    # would raise SettingsError there and no amount of validation could soften
+    # it. Parsing here keeps the failure modes ours.
+    openai_extra_headers: Annotated[dict[str, str], NoDecode] = Field(
+        default_factory=dict,
+        description="Extra headers sent to the gateway on every request (JSON object)",
     )
+
+    @field_validator("openai_extra_headers", mode="before")
+    @classmethod
+    def _parse_extra_headers(cls, value: Any) -> Any:
+        """Parse the JSON object, treating blank as 'no extra headers'.
+
+        Orchestrators routinely inject `OPENAI_EXTRA_HEADERS=` when the value is
+        absent; taking the service down at startup over a header nobody wanted
+        is the wrong trade. Malformed JSON still fails, but says why.
+        """
+        if value is None:
+            return {}
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return {}
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"OPENAI_EXTRA_HEADERS must be a JSON object, got {value!r}: {exc}"
+                ) from exc
+        return value
+
+    # Legacy: the slug used to be its own setting. Folded into
+    # `openai_extra_headers` below so deployed PORTKEY_BEDROCK_SLUG values keep
+    # routing. Prefer OPENAI_EXTRA_HEADERS for anything new.
+    openai_slug: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("openai_slug", "openai_bedrock_slug", "portkey_bedrock_slug"),
+        description="Deprecated — use OPENAI_EXTRA_HEADERS",
+    )
+
+    @model_validator(mode="after")
+    def _fold_legacy_slug_into_headers(self) -> "Settings":
+        """Carry a legacy slug setting into the extra headers.
+
+        Without this, upgrading silently drops the routing header for every
+        environment that still configures the slug the old way — the gateway
+        then rejects requests at runtime rather than at startup.
+        An explicit OPENAI_EXTRA_HEADERS entry always wins.
+        """
+        if self.openai_slug and _LEGACY_SLUG_HEADER not in self.openai_extra_headers:
+            self.openai_extra_headers = {
+                **self.openai_extra_headers,
+                _LEGACY_SLUG_HEADER: self.openai_slug,
+            }
+        return self
 
     # Application Configuration
     environment: str = Field(default="development", description="Environment name")
@@ -231,11 +283,43 @@ class Settings(BaseSettings):
         description="Refresh token expiration time in days (default: 7 days)",
     )
 
+    # Per-agent models. Defaults are what the code shipped with, so an
+    # environment that sets none of these behaves exactly as before.
+    # src/config/agents.py maps agent names onto these fields.
+    openai_model_coordinator: str = Field(
+        default="us.anthropic.claude-sonnet-4-6",
+        description="Model for the coordinator agent",
+    )
+    openai_model_orchestrator: str = Field(
+        default="us.anthropic.claude-opus-5",
+        description="Model for the orchestrator agent",
+    )
+    openai_model_coder: str = Field(
+        default="us.anthropic.claude-sonnet-5",
+        description="Model for the coder agent",
+    )
+    openai_model_sql_agent: str = Field(
+        default="us.anthropic.claude-sonnet-5",
+        description="Model for the SQL agent",
+    )
+    openai_model_researcher: str = Field(
+        default="us.anthropic.claude-sonnet-5",
+        description="Model for the researcher agent",
+    )
+    openai_model_summarizer: str = Field(
+        default="us.anthropic.claude-sonnet-4-6",
+        description="Model for the summarizer agent",
+    )
+    openai_model_title: str = Field(
+        default="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        description="Model for conversation auto-titling",
+    )
+
     # LLM Configuration
     #
     # `llm_provider` and `llm_model` used to live here, defaulting to the Azure
-    # route and gpt-4o-mini. Nothing read them — models come from
-    # src/config/agents.py — and both named a route that no longer exists.
+    # route and gpt-4o-mini. Nothing read them, and both named a route that no
+    # longer exists.
     llm_temperature: float = Field(
         default=0.7,
         ge=0.0,
@@ -614,15 +698,19 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
     def get_openai_headers(self) -> dict[str, str]:
-        """Get the OpenAI-compatible gateway's auth headers.
+        """Build the headers sent to the gateway on every request.
+
+        The API key also travels as a standard `Authorization` bearer, set by
+        the OpenAI client from `openai_api_key`; this covers the extra header
+        our gateway reads instead.
 
         Returns:
-            Dictionary of headers authenticating against the gateway
+            Dictionary of headers to attach to every gateway request
         """
-        return {
-            self.openai_gateway_api_key_header: self.openai_bedrock_api_key,
-            self.openai_gateway_slug_header: self.openai_bedrock_slug,
-        }
+        headers = dict(self.openai_extra_headers)
+        if self.openai_api_key_header:
+            headers[self.openai_api_key_header] = self.openai_api_key
+        return headers
 
 
 def _get_database_settings() -> "DatabaseSettings":
