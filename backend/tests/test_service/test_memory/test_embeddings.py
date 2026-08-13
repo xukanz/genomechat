@@ -1,11 +1,12 @@
 """Unit tests for src.service.memory.embeddings.
 
-Mock the `openai.OpenAI` client so tests don't hit Portkey. Verifies:
+Mock the `openai.OpenAI` client so tests don't hit the gateway. Verifies:
 - Titan `dimensions` is forwarded via `extra_body`
-- Slug auth flows through `settings.get_portkey_headers("bedrock")`
+- Slug auth flows through `settings.get_openai_headers("bedrock")`
 - embed_documents loops one-at-a-time (Bedrock constraint)
 - async paths are gated by the module-level semaphore
-- provider factory rejects unknown providers
+- provider factory rejects unknown providers (including the removed Gemini
+  one), and still accepts the pre-rename `portkey-*` provider names
 """
 
 from __future__ import annotations
@@ -18,11 +19,11 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _bedrock_settings(monkeypatch):
-    """Ensure Portkey Bedrock creds pass `settings.get_portkey_headers("bedrock")`."""
+    """Ensure Bedrock-route creds pass `settings.get_openai_headers("bedrock")`."""
     from src.config.settings import settings as s
 
-    monkeypatch.setattr(s, "portkey_bedrock_api_key", "test-bedrock-key")
-    monkeypatch.setattr(s, "portkey_bedrock_slug", "test-bedrock-slug")
+    monkeypatch.setattr(s, "openai_bedrock_api_key", "test-bedrock-key")
+    monkeypatch.setattr(s, "openai_bedrock_slug", "test-bedrock-slug")
 
 
 def _mock_openai_client(vector: list[float]):
@@ -50,7 +51,7 @@ def test_embed_query_forwards_dimensions_via_extra_body(monkeypatch):
 
     monkeypatch.setattr(openai, "OpenAI", _FakeOpenAI)
 
-    client = emb_mod.PortkeyBedrockTitanEmbeddings(dimensions=1024)
+    client = emb_mod.BedrockTitanEmbeddings(dimensions=1024)
     vec = client.embed_query("hello world")
 
     assert len(vec) == 1024
@@ -76,14 +77,16 @@ def test_embed_documents_loops_one_at_a_time(monkeypatch):
 
     monkeypatch.setattr(openai, "OpenAI", _FakeOpenAI)
 
-    client = emb_mod.PortkeyBedrockTitanEmbeddings(dimensions=8)
+    client = emb_mod.BedrockTitanEmbeddings(dimensions=8)
     vectors = client.embed_documents(["a", "b", "c"])
 
     assert len(vectors) == 3
     assert fake_client.embeddings.create.call_count == 3
 
 
-def test_client_is_constructed_with_portkey_headers(monkeypatch):
+def test_client_is_constructed_with_gateway_headers(monkeypatch):
+    """Default header names are the gateway's wire protocol — deployed envs
+    depend on them staying `x-portkey-*` unless explicitly overridden."""
     from src.service.memory import embeddings as emb_mod
 
     captured: dict = {}
@@ -96,10 +99,9 @@ def test_client_is_constructed_with_portkey_headers(monkeypatch):
     import openai
 
     monkeypatch.setattr(openai, "OpenAI", _FakeOpenAI)
-    emb_mod.PortkeyBedrockTitanEmbeddings()
+    emb_mod.BedrockTitanEmbeddings()
 
-    assert captured["api_key"] == "portkey"
-    assert "x-portkey-api-key" in captured["default_headers"]
+    assert captured["api_key"] == "unused"
     assert captured["default_headers"]["x-portkey-api-key"] == "test-bedrock-key"
     assert captured["default_headers"]["x-portkey-slug"] == "test-bedrock-slug"
 
@@ -122,14 +124,30 @@ def test_get_embedder_defaults_to_bedrock_titan(monkeypatch):
 
     monkeypatch.setattr(openai, "OpenAI", _FakeOpenAI)
     client = emb_mod.get_embedder()
-    assert isinstance(client, emb_mod.PortkeyBedrockTitanEmbeddings)
+    assert isinstance(client, emb_mod.BedrockTitanEmbeddings)
 
 
-def test_get_embedder_gemini_stub_raises():
+def test_get_embedder_accepts_legacy_provider_name(monkeypatch):
+    """A deployed MEMORY_EMBEDDING_PROVIDER=portkey-bedrock-titan still resolves."""
+    from src.service.memory import embeddings as emb_mod
+
+    class _FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.embeddings = MagicMock()
+
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", _FakeOpenAI)
+    client = emb_mod.get_embedder("portkey-bedrock-titan")
+    assert isinstance(client, emb_mod.BedrockTitanEmbeddings)
+
+
+def test_get_embedder_rejects_the_removed_gemini_provider():
+    """The GCP route and its Gemini stub were removed along with GCP creds."""
     from src.service.memory.embeddings import get_embedder
 
-    with pytest.raises(NotImplementedError):
-        get_embedder("portkey-gcp-gemini")
+    with pytest.raises(ValueError, match="Unknown memory_embedding_provider"):
+        get_embedder("openai-gcp-gemini")
 
 
 @pytest.mark.asyncio
@@ -146,7 +164,7 @@ async def test_aembed_query_runs_in_thread(monkeypatch):
 
     monkeypatch.setattr(openai, "OpenAI", _FakeOpenAI)
 
-    client = emb_mod.PortkeyBedrockTitanEmbeddings(dimensions=3)
+    client = emb_mod.BedrockTitanEmbeddings(dimensions=3)
     vec = await client.aembed_query("hello")
     assert vec == [0.5, 0.5, 0.5]
     fake_client.embeddings.create.assert_called_once()

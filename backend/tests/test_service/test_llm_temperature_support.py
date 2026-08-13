@@ -58,21 +58,17 @@ class TestStructuredOutputMethod:
     Claude 5. Tool calling is enforced provider-side, so this is pinned.
     """
 
-    def test_anthropic_providers_use_function_calling(self):
+    def test_bedrock_route_uses_function_calling(self):
         from src.config.llm import ProviderType
 
-        for provider in (ProviderType.PORTKEY_BEDROCK, ProviderType.ANTHROPIC):
-            assert LLMService.get_structured_output_method(provider) == "function_calling"
+        method = LLMService.get_structured_output_method(ProviderType.OPENAI_BEDROCK)
+        assert method == "function_calling"
 
-    def test_openai_style_providers_use_json_schema(self):
+    def test_azure_route_uses_json_schema(self):
         from src.config.llm import ProviderType
 
-        for provider in (
-            ProviderType.PORTKEY_AZURE,
-            ProviderType.PORTKEY_GCP,
-            ProviderType.OPENAI,
-        ):
-            assert LLMService.get_structured_output_method(provider) == "json_schema"
+        method = LLMService.get_structured_output_method(ProviderType.OPENAI_AZURE)
+        assert method == "json_schema"
 
     def test_no_agent_resolves_to_json_mode(self):
         for agent in AGENT_LLM_MAP:

@@ -97,7 +97,7 @@ async def detailed_health_check() -> dict[str, Any]:
             or getattr(settings, "mongodb_connection_string", None)
         ),
         "sandbox_configured": bool(getattr(settings, "sandbox_url", None)),
-        "portkey_configured": bool(getattr(settings, "portkey_azure_api_key", None)),
+        "openai_configured": bool(getattr(settings, "openai_azure_api_key", None)),
     }
 
     return health_status

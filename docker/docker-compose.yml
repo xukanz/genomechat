@@ -69,8 +69,8 @@ services:
     volumes:
       # Mount source for hot-reload (writable for UV virtual environment)
       - ../backend:/app
-      # Mount a CA bundle so Python's httpx/requests can validate TLS to
-      # Portkey through an intercepting proxy. Read-only at a stable path;
+      # Mount a CA bundle so Python's httpx/requests can validate TLS to the
+      # LLM gateway through an intercepting proxy. Read-only at a stable path;
       # SSL_CERT_PATH below points into it.
       - ../.certs:/certs:ro
     env_file:
@@ -81,14 +81,18 @@ services:
       - LOG_LEVEL=debug
       - SANDBOX_URL=${SANDBOX_URL:-http://sandbox:8080}
       - R_SANDBOX_URL=${R_SANDBOX_URL:-http://r-sandbox:8081}
-      # Portkey Configuration
-      - PORTKEY_BASE_URL=${PORTKEY_BASE_URL}
-      - PORTKEY_API_KEY=${PORTKEY_API_KEY}
-      - PORTKEY_AZURE_API_KEY=${PORTKEY_AZURE_API_KEY}
-      - PORTKEY_AZURE_SLUG=${PORTKEY_AZURE_SLUG}
-      # Portkey Bedrock — used by the agents and the memory pipeline
-      - PORTKEY_BEDROCK_API_KEY=${PORTKEY_BEDROCK_API_KEY}
-      - PORTKEY_BEDROCK_SLUG=${PORTKEY_BEDROCK_SLUG:-bedrock}
+      # OpenAI-compatible gateway. Azure/Bedrock are routes on one endpoint;
+      # the backend also still accepts the old PORTKEY_* names for these.
+      - OPENAI_GATEWAY_BASE_URL=${OPENAI_GATEWAY_BASE_URL}
+      - OPENAI_AZURE_API_KEY=${OPENAI_AZURE_API_KEY}
+      - OPENAI_AZURE_SLUG=${OPENAI_AZURE_SLUG}
+      # Bedrock route — used by the agents and the memory pipeline
+      - OPENAI_BEDROCK_API_KEY=${OPENAI_BEDROCK_API_KEY}
+      - OPENAI_BEDROCK_SLUG=${OPENAI_BEDROCK_SLUG:-bedrock}
+      # Gateway wire-protocol header names. Override only when pointing at a
+      # different OpenAI-compatible gateway.
+      - OPENAI_GATEWAY_API_KEY_HEADER=${OPENAI_GATEWAY_API_KEY_HEADER:-x-portkey-api-key}
+      - OPENAI_GATEWAY_SLUG_HEADER=${OPENAI_GATEWAY_SLUG_HEADER:-x-portkey-slug}
       # CA bundle for Python httpx/requests, inside the /certs volume above.
       - SSL_CERT_PATH=${SSL_CERT_PATH_CONTAINER:-/certs/ca-bundle.crt}
       # MongoDB Configuration

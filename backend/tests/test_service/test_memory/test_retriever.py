@@ -211,7 +211,7 @@ async def test_retrieve_survives_embedder_failure(monkeypatch, _mock_mongo):
 
     class _BrokenEmb:
         async def aembed_query(self, text):
-            raise RuntimeError("portkey down")
+            raise RuntimeError("gateway down")
 
     monkeypatch.setattr(ret_mod, "get_embedder", lambda: _BrokenEmb())
 

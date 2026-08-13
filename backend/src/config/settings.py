@@ -14,13 +14,28 @@ try:
 except ImportError:
     yaml = None  # type: ignore
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
     from src.config.database import DatabaseSettings
 
 logger = logging.getLogger(__name__)
+
+# Gateway settings were renamed from `portkey_*` to `openai_*`. Env and dotenv
+# still accept the old names via each field's `AliasChoices`, but the vault
+# source below builds a plain dict that is merged *before* alias resolution: a
+# legacy `portkey_*` vault key and a new `openai_*` env var would then both be
+# present, and `AliasChoices` picks its first choice — silently letting env win
+# over vault, inverting the documented Vault > Env precedence. Canonicalizing
+# the vault keys up front removes the ambiguity.
+_LEGACY_SECRET_KEYS = {
+    "portkey_base_url": "openai_gateway_base_url",
+    "portkey_azure_api_key": "openai_azure_api_key",
+    "portkey_azure_slug": "openai_azure_slug",
+    "portkey_bedrock_api_key": "openai_bedrock_api_key",
+    "portkey_bedrock_slug": "openai_bedrock_slug",
+}
 
 
 def load_vault_secrets() -> dict[str, Any]:
@@ -107,6 +122,7 @@ class Settings(BaseSettings):
             converted_secrets = {}
             for key, value in vault_secrets.items():
                 pydantic_key = key.lower().replace("-", "_")
+                pydantic_key = _LEGACY_SECRET_KEYS.get(pydantic_key, pydantic_key)
                 converted_secrets[pydantic_key] = value
             # Log which AWS-related keys are available
             aws_keys = [k for k in converted_secrets.keys() if "aws" in k.lower()]
@@ -142,37 +158,64 @@ class Settings(BaseSettings):
             Settings.vault_secrets_source,
         )
 
-    # Portkey Configuration
-    portkey_base_url: str = Field(
+    # OpenAI-compatible gateway configuration.
+    #
+    # Azure/Bedrock are routes behind a single OpenAI-compatible endpoint,
+    # not separate SDKs. Each route authenticates with its own key + slug, sent
+    # in headers rather than in the OpenAI `api_key` field.
+    #
+    # Every field below also accepts its pre-rename `PORTKEY_*` env var so that
+    # already-deployed environments keep working without a secret rotation.
+    # Deliberately not `OPENAI_BASE_URL`: the openai SDK reads that name itself,
+    # so exporting it would also redirect the direct-OpenAI provider at the
+    # gateway.
+    openai_gateway_base_url: str = Field(
         default="",
-        description="Portkey API base URL",
+        validation_alias=AliasChoices("openai_gateway_base_url", "portkey_base_url"),
+        description="Base URL of the OpenAI-compatible gateway",
     )
 
-    # Azure Provider (Required - primary provider)
-    portkey_azure_api_key: str = Field(..., description="Portkey Azure API key")
-    portkey_azure_slug: str = Field(
+    # Azure Route (Required - primary route)
+    openai_azure_api_key: str = Field(
         ...,
-        description="Portkey Azure slug",
+        validation_alias=AliasChoices("openai_azure_api_key", "portkey_azure_api_key"),
+        description="API key for the Azure route",
+    )
+    openai_azure_slug: str = Field(
+        ...,
+        validation_alias=AliasChoices("openai_azure_slug", "portkey_azure_slug"),
+        description="Gateway slug for the Azure route",
     )
 
-    # Bedrock Provider (Optional)
-    portkey_bedrock_api_key: str | None = Field(
+    # Bedrock Route (Optional)
+    openai_bedrock_api_key: str | None = Field(
         None,
-        description="Portkey Bedrock API key",
+        validation_alias=AliasChoices("openai_bedrock_api_key", "portkey_bedrock_api_key"),
+        description="API key for the Bedrock route",
     )
-    portkey_bedrock_slug: str | None = Field(
+    openai_bedrock_slug: str | None = Field(
         None,
-        description="Portkey Bedrock slug",
+        validation_alias=AliasChoices("openai_bedrock_slug", "portkey_bedrock_slug"),
+        description="Gateway slug for the Bedrock route",
     )
 
-    # GCP Provider (Optional)
-    portkey_gcp_api_key: str | None = Field(
-        None,
-        description="Portkey GCP API key",
+    # The gateway authenticates per-route via custom headers rather than the
+    # OpenAI `Authorization` field. Header *names* are the gateway's wire
+    # protocol, so they are configurable — the defaults match the gateway we run
+    # today, and pointing at a different OpenAI-compatible gateway is an env
+    # change rather than a code change.
+    #
+    # Named `openai_gateway_*` so they don't read like the unrelated
+    # `OPENAI_API_KEY` used by the direct-OpenAI provider in src/service/llm.py.
+    openai_gateway_api_key_header: str = Field(
+        default="x-portkey-api-key",
+        min_length=1,
+        description="Header carrying the route API key on the OpenAI-compatible gateway",
     )
-    portkey_gcp_slug: str | None = Field(
-        None,
-        description="Portkey GCP slug",
+    openai_gateway_slug_header: str = Field(
+        default="x-portkey-slug",
+        min_length=1,
+        description="Header carrying the route slug on the OpenAI-compatible gateway",
     )
 
     # Application Configuration
@@ -204,7 +247,7 @@ class Settings(BaseSettings):
     )
 
     # LLM Configuration
-    llm_provider: str = Field(default="portkey_azure", description="LLM provider to use")
+    llm_provider: str = Field(default="openai_azure", description="LLM provider to use")
     llm_model: str = Field(default="gpt-4o-mini", description="LLM model to use")
     llm_temperature: float = Field(
         default=0.7,
@@ -464,7 +507,7 @@ class Settings(BaseSettings):
     )
     memory_extraction_agent: str = Field(
         default="summarizer",
-        description="Agent key for extraction LLM (Haiku via Portkey Bedrock)",
+        description="Agent key for extraction LLM (Haiku via the Bedrock route)",
     )
     memory_consolidation_enabled: bool = Field(
         default=False,
@@ -477,8 +520,8 @@ class Settings(BaseSettings):
         description="Consolidation cadence in minutes",
     )
     memory_embedding_provider: str = Field(
-        default="portkey-bedrock-titan",
-        description="Embedding provider: portkey-bedrock-titan | portkey-gcp-gemini",
+        default="openai-bedrock-titan",
+        description="Embedding provider: openai-bedrock-titan",
     )
     memory_embedding_model: str = Field(
         default="amazon.titan-embed-text-v2:0",
@@ -506,7 +549,7 @@ class Settings(BaseSettings):
         default=8,
         ge=1,
         le=32,
-        description="Concurrent Portkey Bedrock embedding requests per instance",
+        description="Concurrent Bedrock-route embedding requests per instance",
     )
     memory_extraction_per_user_concurrency: int = Field(
         default=2,
@@ -583,46 +626,37 @@ class Settings(BaseSettings):
         """Parse CORS origins string into list."""
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
-    def get_portkey_headers(self, provider: str = "azure") -> dict[str, str]:
-        """Get Portkey headers for specified provider.
+    def get_openai_headers(self, provider: str = "azure") -> dict[str, str]:
+        """Get OpenAI-compatible gateway auth headers for the given route.
 
         Args:
-            provider: Provider name (azure, bedrock, or gcp)
+            provider: Route name (azure or bedrock)
 
         Returns:
-            Dictionary of headers for Portkey
+            Dictionary of headers authenticating that route
 
         Raises:
-            ValueError: If provider is not supported or not configured
+            ValueError: If the route is not supported or not configured
         """
         provider = provider.lower()
 
         if provider == "azure":
-            api_key = self.portkey_azure_api_key
-            slug = self.portkey_azure_slug
+            api_key = self.openai_azure_api_key
+            slug = self.openai_azure_slug
         elif provider == "bedrock":
-            if not self.portkey_bedrock_api_key or not self.portkey_bedrock_slug:
+            if not self.openai_bedrock_api_key or not self.openai_bedrock_slug:
                 raise ValueError(
-                    "Bedrock provider not configured. "
-                    "Set PORTKEY_BEDROCK_API_KEY and PORTKEY_BEDROCK_SLUG"
+                    "Bedrock route not configured. "
+                    "Set OPENAI_BEDROCK_API_KEY and OPENAI_BEDROCK_SLUG"
                 )
-            api_key = self.portkey_bedrock_api_key
-            slug = self.portkey_bedrock_slug
-        elif provider == "gcp":
-            if not self.portkey_gcp_api_key or not self.portkey_gcp_slug:
-                raise ValueError(
-                    "GCP provider not configured. Set PORTKEY_GCP_API_KEY and PORTKEY_GCP_SLUG"
-                )
-            api_key = self.portkey_gcp_api_key
-            slug = self.portkey_gcp_slug
+            api_key = self.openai_bedrock_api_key
+            slug = self.openai_bedrock_slug
         else:
-            raise ValueError(
-                f"Unsupported provider: {provider}. Must be one of: azure, bedrock, gcp"
-            )
+            raise ValueError(f"Unsupported route: {provider}. Must be one of: azure, bedrock")
 
         return {
-            "x-portkey-api-key": api_key,
-            "x-portkey-slug": slug,
+            self.openai_gateway_api_key_header: api_key,
+            self.openai_gateway_slug_header: slug,
         }
 
 

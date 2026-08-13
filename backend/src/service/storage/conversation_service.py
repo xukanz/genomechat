@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.base import CheckpointTuple
 from langgraph.checkpoint.mongodb import MongoDBSaver
 
+from src.config.llm import ProviderType
 from src.config.settings import settings
 from src.models.conversation import Conversation, ConversationWithMessages
 from src.service.database.connections.mongodb_connection import (
@@ -369,7 +370,7 @@ class ConversationService:
             # Use lightweight model for fast title generation (Haiku 4.5)
             logger.debug("Initializing LLM for title generation...")
             llm = LLMService.get_llm_by_provider(
-                provider="portkey_bedrock",
+                provider=ProviderType.OPENAI_BEDROCK,
                 model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
                 temperature=0.7,
                 streaming=False,

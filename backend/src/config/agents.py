@@ -10,18 +10,18 @@ from src.config.llm import ProviderType
 
 # Define agent-LLM mapping: (provider, model)
 AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
-    "coordinator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
-    "orchestrator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-opus-5"),
-    "coder": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
-    "sql_agent": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
-    "researcher": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
-    "summarizer": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
+    "coordinator": (ProviderType.OPENAI_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
+    "orchestrator": (ProviderType.OPENAI_BEDROCK, "us.anthropic.claude-opus-5"),
+    "coder": (ProviderType.OPENAI_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "sql_agent": (ProviderType.OPENAI_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "researcher": (ProviderType.OPENAI_BEDROCK, "us.anthropic.claude-sonnet-5"),
+    "summarizer": (ProviderType.OPENAI_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
 }
 # AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
-#     "coordinator": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
-#     "orchestrator": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
-#     "coder": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
-#     "sql_agent": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
+#     "coordinator": (ProviderType.OPENAI_AZURE, "gpt-5-mini"),
+#     "orchestrator": (ProviderType.OPENAI_AZURE, "gpt-5-mini"),
+#     "coder": (ProviderType.OPENAI_AZURE, "gpt-5-mini"),
+#     "sql_agent": (ProviderType.OPENAI_AZURE, "gpt-5-mini"),
 # }
 
 

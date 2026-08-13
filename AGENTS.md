@@ -220,7 +220,8 @@ The application is container-ready for Kubernetes deployment:
 1. **Backend Deployment**:
    - Directory: `backend/`
    - Environment variables use semicolon (`;`) separator
-   - Required: `PORTKEY_AZURE_API_KEY;PORTKEY_AZURE_SLUG`
+   - Required: `OPENAI_AZURE_API_KEY;OPENAI_AZURE_SLUG` (the pre-rename
+     `PORTKEY_*` names are still accepted, so existing secrets keep working)
    - Automatic HTTPS/TLS via Kubernetes Ingress
 
 2. **Frontend Deployment**:

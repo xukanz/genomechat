@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Canonical model → (input $/1M, output $/1M)
 _PRICE_TABLE_USD_PER_MTOK: dict[str, tuple[float, float]] = {
-    # Anthropic Claude (list prices via Bedrock; Portkey passes through)
+    # Anthropic Claude (list prices via Bedrock; the gateway passes through)
     "claude-haiku-4-5": (1.00, 5.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-opus-4-6": (15.00, 75.00),
