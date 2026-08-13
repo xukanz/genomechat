@@ -6,15 +6,13 @@ This service provides centralized LLM instantiation following clean architecture
 - Agents use service for all LLM access
 """
 
-import os
 from typing import Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from src.config.llm import ProviderType
-from src.config.agents import resolve_agent_llm_config
+from src.config.agents import resolve_agent_model
 from src.config.settings import settings
 
 
@@ -75,196 +73,81 @@ class LLMService:
     }
 
     @classmethod
+    def _no_temperature_models(cls) -> set[str]:
+        """Built-in blocklist plus whatever this endpoint adds.
+
+        Union only — `settings.openai_no_temperature_models` extends the
+        built-ins, it cannot remove one. So an endpoint serving a model whose
+        name collides with a built-in entry (a locally-hosted `o3` that does
+        accept temperature, say) silently loses temperature control. No caller
+        has needed the inverse yet.
+        """
+        extra = settings.openai_no_temperature_models
+        return cls._NO_TEMPERATURE_MODELS | {m.strip() for m in extra.split(",") if m.strip()}
+
+    @classmethod
     def _supports_temperature(cls, model: str) -> bool:
         """Check if model supports temperature parameter."""
         model_base = model.lower().replace("-", "")
         return not any(
-            no_temp_model.replace("-", "") in model_base
-            for no_temp_model in cls._NO_TEMPERATURE_MODELS
+            no_temp_model.lower().replace("-", "") in model_base
+            for no_temp_model in cls._no_temperature_models()
         )
 
     @classmethod
-    def _get_portkey_headers(cls, provider: str) -> dict:
-        """Get Portkey headers for specified provider."""
-        return settings.get_portkey_headers(provider=provider)
+    def structured_output_method(cls) -> str:
+        """The ``with_structured_output`` method this endpoint supports.
 
-    @staticmethod
-    def get_structured_output_method(provider: str) -> str:
-        """Get the appropriate structured output method for a provider.
+        Read through settings rather than pinned as a constant: which methods
+        work is a property of the endpoint, and a class attribute would snapshot
+        it at import time.
 
-        Anthropic models use ``function_calling`` rather than ``json_mode``.
-        ``json_mode`` is not schema-enforced — it asks for JSON in the prompt and
-        parses whatever comes back — so a model that opens with a sentence of
-        explanation raises ``OutputParserException`` instead of routing. That
-        failed intermittently on Claude 5, which is more inclined to narrate.
-        Tool calling is schema-enforced at the provider, so prose cannot leak
-        through.
+        The default, ``function_calling``, suits the Anthropic models we serve
+        today. ``json_mode`` is not schema-enforced — it asks for JSON in the
+        prompt and parses whatever comes back — so a model that opens with a
+        sentence of explanation raises ``OutputParserException`` instead of
+        routing. That failed intermittently on Claude 5, which is more inclined
+        to narrate. Tool calling is schema-enforced at the provider, so prose
+        cannot leak through.
 
         Callers must use ``streaming=False``; Bedrock rejects tool use with
         streaming enabled.
-
-        Args:
-            provider: Provider type (from ProviderType enum)
-
-        Returns:
-            Method string: 'function_calling' for Bedrock/Anthropic,
-            'json_schema' for OpenAI/GCP
         """
-        if provider in (ProviderType.PORTKEY_BEDROCK, ProviderType.ANTHROPIC):
-            return "function_calling"
-        elif provider in (
-            ProviderType.PORTKEY_AZURE,
-            ProviderType.PORTKEY_GCP,
-            ProviderType.OPENAI,
-        ):
-            return "json_schema"
-        else:
-            # Default to json_schema for unknown providers
-            return "json_schema"
-
-    @classmethod
-    def get_structured_output_method_for_agent(cls, agent_name: str) -> str:
-        """Get the appropriate structured output method for an agent.
-
-        Args:
-            agent_name: Name of the agent
-
-        Returns:
-            Method string based on agent's configured provider
-        """
-        provider, _ = resolve_agent_llm_config(agent_name)
-        return cls.get_structured_output_method(provider)
+        return settings.openai_structured_output_method
 
     @classmethod
     def create_llm(
-        cls, provider: str, model: str, temperature: float = 0.7, streaming: bool = True, **kwargs
+        cls, model: str, temperature: float = 0.7, streaming: bool = True, **kwargs
     ) -> BaseChatModel:
         """Low-level factory for LLM instances.
 
+        Every model is served by one route on an OpenAI-compatible gateway, so
+        the only thing that varies between calls is the model name.
+
         Args:
-            provider: Provider name (portkey_azure, portkey_bedrock, etc.)
             model: Model name
             temperature: Temperature setting (ignored for reasoning models)
             streaming: Enable streaming responses
-            **kwargs: Additional provider-specific parameters
-
-        Returns:
-            Configured LLM instance
-
-        Raises:
-            ValueError: If provider is not supported
-        """
-        # Check if this model supports temperature
-        supports_temperature = cls._supports_temperature(model)
-
-        if provider == ProviderType.PORTKEY_AZURE:
-            portkey_headers = cls._get_portkey_headers(provider="azure")
-            llm_kwargs = {
-                "model": model,
-                "base_url": settings.portkey_base_url,
-                "default_headers": portkey_headers,
-                "api_key": "portkey",  # Dummy key, auth in headers
-                "streaming": streaming,
-                "timeout": 600,  # 10 minutes for long streaming responses
-                "max_retries": 3,  # Retry on connection failures
-                **kwargs,
-            }
-            if supports_temperature:
-                llm_kwargs["temperature"] = temperature
-            return ChatOpenAI(**_inject_callbacks(llm_kwargs))
-
-        elif provider == ProviderType.PORTKEY_BEDROCK:
-            portkey_headers = cls._get_portkey_headers(provider="bedrock")
-            llm_kwargs = {
-                "model": model,
-                "base_url": settings.portkey_base_url,
-                "default_headers": portkey_headers,
-                "api_key": "portkey",
-                "streaming": streaming,
-                "timeout": 600,  # 10 minutes for long streaming responses
-                "max_retries": 3,  # Retry on connection failures
-                # Note: LangChain's create_agent and bind_tools automatically handle toolConfig
-                # Don't set tool_choice here as it conflicts with LangChain's automatic tool binding
-                **kwargs,
-            }
-            if supports_temperature:
-                llm_kwargs["temperature"] = temperature
-            return ChatOpenAI(**_inject_callbacks(llm_kwargs))
-
-        elif provider == ProviderType.PORTKEY_GCP:
-            portkey_headers = cls._get_portkey_headers(provider="gcp")
-            llm_kwargs = {
-                "model": model,
-                "base_url": settings.portkey_base_url,
-                "default_headers": portkey_headers,
-                "api_key": "portkey",
-                "streaming": streaming,
-                "timeout": 600,  # 10 minutes for long streaming responses
-                "max_retries": 3,  # Retry on connection failures
-                **kwargs,
-            }
-            if supports_temperature:
-                llm_kwargs["temperature"] = temperature
-            return ChatOpenAI(**_inject_callbacks(llm_kwargs))
-
-        elif provider == ProviderType.OPENAI:
-            llm_kwargs = {
-                "model": model,
-                "streaming": streaming,
-                "timeout": 600,  # 10 minutes for long streaming responses
-                "max_retries": 3,  # Retry on connection failures
-                **kwargs,
-            }
-            if supports_temperature:
-                llm_kwargs["temperature"] = temperature
-
-            api_key = os.getenv("OPENAI_API_KEY")
-            if api_key:
-                llm_kwargs["api_key"] = api_key
-            return ChatOpenAI(**_inject_callbacks(llm_kwargs))
-
-        elif provider == ProviderType.ANTHROPIC:
-            from langchain_anthropic import ChatAnthropic
-
-            llm_kwargs = {
-                "model": model,
-                "streaming": streaming,
-                "timeout": 600,  # 10 minutes for long streaming responses
-                "max_retries": 3,  # Retry on connection failures
-                **kwargs,
-            }
-            if supports_temperature:
-                llm_kwargs["temperature"] = temperature
-
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if api_key:
-                llm_kwargs["api_key"] = api_key
-            return ChatAnthropic(**_inject_callbacks(llm_kwargs))
-
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
-
-    @classmethod
-    def get_llm_by_provider(
-        cls, provider: str, model: str, temperature: float = 0.7, streaming: bool = True, **kwargs
-    ) -> BaseChatModel:
-        """Get LLM for specific provider and model.
-
-        Convenience wrapper around create_llm with common defaults.
-
-        Args:
-            provider: Provider name
-            model: Model name
-            temperature: Temperature setting (default: 0.7)
-            streaming: Enable streaming responses (default: True)
-            **kwargs: Additional provider-specific parameters
+            **kwargs: Additional parameters forwarded to ChatOpenAI
 
         Returns:
             Configured LLM instance
         """
-        return cls.create_llm(
-            provider=provider, model=model, temperature=temperature, streaming=streaming, **kwargs
-        )
+        llm_kwargs = {
+            "model": model,
+            "base_url": settings.openai_base_url,
+            "default_headers": settings.get_openai_headers(),
+            "api_key": settings.openai_api_key,
+            "streaming": streaming,
+            "timeout": 600,  # 10 minutes for long streaming responses
+            "max_retries": 3,  # Retry on connection failures
+            # Note: LangChain's create_agent and bind_tools automatically handle toolConfig
+            # Don't set tool_choice here as it conflicts with LangChain's automatic tool binding
+            **kwargs,
+        }
+        if cls._supports_temperature(model):
+            llm_kwargs["temperature"] = temperature
+        return ChatOpenAI(**_inject_callbacks(llm_kwargs))
 
     @classmethod
     def get_llm_by_agent(
@@ -276,7 +159,7 @@ class LLMService:
             agent_name: Name of the agent
             temperature: Temperature setting (uses default if not provided)
             streaming: Enable streaming responses (default: True)
-            **kwargs: Additional provider-specific parameters
+            **kwargs: Additional parameters forwarded to ChatOpenAI
 
         Returns:
             Configured LLM instance
@@ -284,12 +167,10 @@ class LLMService:
         Raises:
             ValueError: If agent_name is not found
         """
-        provider, model = resolve_agent_llm_config(agent_name)
+        model = resolve_agent_model(agent_name)
 
         # Use default temperature if not provided
         if temperature is None:
             temperature = 0.7
 
-        return cls.create_llm(
-            provider=provider, model=model, temperature=temperature, streaming=streaming, **kwargs
-        )
+        return cls.create_llm(model=model, temperature=temperature, streaming=streaming, **kwargs)

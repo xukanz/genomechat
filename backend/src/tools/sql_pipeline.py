@@ -110,7 +110,7 @@ def _validate_sql(
     }
 
     prompt_str = get_processed_prompt("sql_agent/sql_validator", template_vars)
-    method = LLMService.get_structured_output_method_for_agent("sql_agent")
+    method = LLMService.structured_output_method()
     structured_llm = llm_client.with_structured_output(SQLValidationResult, method=method)
 
     try:

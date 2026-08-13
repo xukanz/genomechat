@@ -1,13 +1,13 @@
-"""Embedding providers for the memory pipeline.
+"""Embedding provider for the memory pipeline.
 
-Phase 0.5 uses Titan V2 via the Portkey Bedrock gateway. The class below wraps
-`openai.OpenAI.embeddings.create()` because Bedrock's embedding endpoint does
-not accept arrays — each document goes through one at a time. A module-level
-`asyncio.Semaphore` bounds concurrency against Portkey TPS.
+Talks to whatever OpenAI-compatible endpoint `settings.openai_base_url` points
+at, using the same auth as the chat models. Documents go one at a time because
+Bedrock's embedding endpoint does not accept arrays — harmless on endpoints that
+would have taken a batch, and required on the one we run. A module-level
+`asyncio.Semaphore` bounds concurrency against endpoint TPS.
 
-Governance invariant: all auth goes through `settings.get_portkey_headers()` —
-the same helper `LLMService.create_llm` uses. Never call `createHeaders` with
-`virtual_key` (deprecated).
+Governance invariant: all auth goes through `settings.get_openai_headers()` —
+the same helper `LLMService.create_llm` uses.
 """
 
 from __future__ import annotations
@@ -23,16 +23,15 @@ from src.config.settings import settings
 logger = logging.getLogger(__name__)
 
 
-class PortkeyBedrockTitanEmbeddings(Embeddings):
-    """Titan V2 embeddings via the Portkey Bedrock gateway.
+class OpenAICompatibleEmbeddings(Embeddings):
+    """Embeddings via the configured OpenAI-compatible endpoint.
 
     - Synchronous `embed_documents`/`embed_query` use the OpenAI SDK's blocking
       `embeddings.create(...)` — suitable for `asyncio.to_thread` from the async
       helpers below.
     - Async paths are gated by a module-level semaphore so a single turn cannot
-      monopolize Portkey capacity; the cap is `settings.memory_embedding_concurrency`.
-    - Titan V2's `dimensions` parameter is forwarded via `extra_body` since it
-      is not a standard OpenAI SDK field.
+      monopolize endpoint capacity; the cap is `settings.memory_embedding_concurrency`.
+    - `dimensions` is forwarded only when configured — see `_request_kwargs`.
     """
 
     _semaphore: asyncio.Semaphore | None = None
@@ -46,72 +45,59 @@ class PortkeyBedrockTitanEmbeddings(Embeddings):
             import openai
         except ImportError as exc:
             raise ImportError(
-                "openai is required for PortkeyBedrockTitanEmbeddings. Install with: uv add openai"
+                "openai is required for OpenAICompatibleEmbeddings. Install with: uv add openai"
             ) from exc
 
-        headers = settings.get_portkey_headers(provider="bedrock")
         self._client = openai.OpenAI(
-            api_key="portkey",
-            base_url=settings.portkey_base_url,
-            default_headers=headers,
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            default_headers=settings.get_openai_headers(),
             timeout=60.0,
             max_retries=3,
         )
         self._model = model or settings.memory_embedding_model
-        self._dimensions = dimensions or settings.memory_embedding_dimensions
-        if PortkeyBedrockTitanEmbeddings._semaphore is None:
-            PortkeyBedrockTitanEmbeddings._semaphore = asyncio.Semaphore(
+        self._dimensions = (
+            dimensions if dimensions is not None else settings.memory_embedding_dimensions
+        )
+        if OpenAICompatibleEmbeddings._semaphore is None:
+            OpenAICompatibleEmbeddings._semaphore = asyncio.Semaphore(
                 settings.memory_embedding_concurrency
             )
+
+    def _request_kwargs(self, text: str) -> dict[str, Any]:
+        """Build the request, omitting `dimensions` when it isn't configured.
+
+        Titan V2 and OpenAI's text-embedding-3-* both read `dimensions`, but an
+        endpoint that doesn't know the parameter rejects the entire request — so
+        it is only sent when someone asked for it.
+        """
+        kwargs: dict[str, Any] = {"input": text, "model": self._model}
+        if self._dimensions is not None:
+            kwargs["extra_body"] = {"dimensions": self._dimensions}
+        return kwargs
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [self.embed_query(t) for t in texts]
 
     def embed_query(self, text: str) -> list[float]:
-        response = self._client.embeddings.create(
-            input=text,
-            model=self._model,
-            extra_body={"dimensions": self._dimensions},
-        )
-        return response.data[0].embedding
+        response = self._client.embeddings.create(**self._request_kwargs(text))
+        embedding: list[float] = response.data[0].embedding
+        return embedding
 
     async def aembed_query(self, text: str) -> list[float]:
-        assert PortkeyBedrockTitanEmbeddings._semaphore is not None
-        async with PortkeyBedrockTitanEmbeddings._semaphore:
+        assert OpenAICompatibleEmbeddings._semaphore is not None
+        async with OpenAICompatibleEmbeddings._semaphore:
             return await asyncio.to_thread(self.embed_query, text)
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         return list(await asyncio.gather(*(self.aembed_query(t) for t in texts)))
 
 
-class _GeminiEmbeddingsStub(Embeddings):
-    """Reserved GCP Gemini implementation — emitted for future A/B comparison."""
+def get_embedder() -> Embeddings:
+    """Return the embeddings client for the configured endpoint.
 
-    def __init__(self, **_: Any) -> None:
-        raise NotImplementedError(
-            "portkey-gcp-gemini embeddings are reserved for a later phase; "
-            "Phase 0.5 ships with portkey-bedrock-titan only"
-        )
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:  # pragma: no cover
-        raise NotImplementedError
-
-    def embed_query(self, text: str) -> list[float]:  # pragma: no cover
-        raise NotImplementedError
-
-
-def get_embedder(provider: str | None = None) -> Embeddings:
-    """Return the configured embeddings client.
-
-    Default: `settings.memory_embedding_provider`. Unknown providers raise
-    ValueError so a mistyped env var fails fast instead of silently substituting.
+    There is no provider registry: every endpoint we support speaks the OpenAI
+    embeddings API, so the model name (`MEMORY_EMBEDDING_MODEL`) is the only
+    thing that varies.
     """
-    provider = (provider or settings.memory_embedding_provider).lower()
-    if provider in ("portkey-bedrock-titan", "bedrock-titan", "titan"):
-        return PortkeyBedrockTitanEmbeddings()
-    if provider in ("portkey-gcp-gemini", "gcp-gemini", "gemini"):
-        return _GeminiEmbeddingsStub()
-    raise ValueError(
-        f"Unknown memory_embedding_provider '{provider}'. Supported: "
-        "portkey-bedrock-titan | portkey-gcp-gemini"
-    )
+    return OpenAICompatibleEmbeddings()

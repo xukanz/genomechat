@@ -105,13 +105,12 @@ def coordinator_node(state: AgentState) -> Command[Literal["orchestrator", "__en
 
     # Use structured output for type-safe coordinator decisions
     # Structured outputs require streaming=False (streaming chunks can't be parsed as JSON)
-    # Use provider-aware method selection (function_calling for Bedrock/Anthropic,
-    # json_schema for OpenAI/GCP) — see LLMService.get_structured_output_method
+    # Schema-enforced, not json_mode — see LLMService.structured_output_method
     coordinator_decision = (
         LLMService.get_llm_by_agent("coordinator", streaming=False)
         .with_structured_output(
             CoordinatorResponse,
-            method=LLMService.get_structured_output_method_for_agent("coordinator"),
+            method=LLMService.structured_output_method(),
         )
         .invoke(messages)
     )

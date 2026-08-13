@@ -1,43 +1,42 @@
 """Agent LLM configuration mapping.
 
-Defines which LLM provider and model each agent should use.
-LLM instantiation logic has been moved to src.service.llm for clean architecture.
+Every agent runs against the same OpenAI-compatible gateway, so the model name
+is the only thing that varies per agent — and each one is a setting, so models
+can be changed per environment without a deploy. LLM instantiation lives in
+src.service.llm.
 """
 
-from typing import Tuple
+from src.config.settings import settings
 
-from src.config.llm import ProviderType
-
-# Define agent-LLM mapping: (provider, model)
-AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
-    "coordinator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
-    "orchestrator": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-opus-5"),
-    "coder": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
-    "sql_agent": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
-    "researcher": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-5"),
-    "summarizer": (ProviderType.PORTKEY_BEDROCK, "us.anthropic.claude-sonnet-4-6"),
+# Agent name -> the Settings field holding its model. Membership here is what
+# makes an agent known; add a route by adding a settings field and an entry.
+AGENT_MODEL_SETTINGS: dict[str, str] = {
+    "coordinator": "openai_model_coordinator",
+    "orchestrator": "openai_model_orchestrator",
+    "coder": "openai_model_coder",
+    "sql_agent": "openai_model_sql_agent",
+    "researcher": "openai_model_researcher",
+    "summarizer": "openai_model_summarizer",
 }
-# AGENT_LLM_MAP: dict[str, Tuple[str, str]] = {
-#     "coordinator": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
-#     "orchestrator": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
-#     "coder": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
-#     "sql_agent": (ProviderType.PORTKEY_AZURE, "gpt-5-mini"),
-# }
 
 
-def resolve_agent_llm_config(agent_name: str) -> Tuple[str, str]:
-    """Resolve agent LLM configuration to (provider, model) tuple.
+def resolve_agent_model(agent_name: str) -> str:
+    """Resolve an agent to the model it runs on.
+
+    Read through `settings` on every call rather than snapshotting at import,
+    so overriding a model in tests or at runtime takes effect.
 
     Args:
         agent_name: The name of the agent
 
     Returns:
-        Tuple of (provider, model)
+        Model identifier
 
     Raises:
         ValueError: If agent_name is not found
     """
-    if agent_name not in AGENT_LLM_MAP:
-        raise ValueError(f"Agent '{agent_name}' not found in AGENT_LLM_MAP")
+    if agent_name not in AGENT_MODEL_SETTINGS:
+        raise ValueError(f"Agent '{agent_name}' not found in AGENT_MODEL_SETTINGS")
 
-    return AGENT_LLM_MAP[agent_name]
+    model: str = getattr(settings, AGENT_MODEL_SETTINGS[agent_name])
+    return model

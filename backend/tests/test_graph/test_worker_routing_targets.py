@@ -18,7 +18,7 @@ import typing
 import pytest
 from pydantic import ValidationError
 
-from src.config.agents import AGENT_LLM_MAP
+from src.config.agents import AGENT_MODEL_SETTINGS
 from src.graph.builder import build_graph
 from src.graph.types import OrchestratorResponse
 
@@ -50,7 +50,7 @@ def test_worker_is_routable_end_to_end(worker):
     """Schema, graph node and LLM mapping must all know the same worker."""
     OrchestratorResponse(next=worker, reasoning="routing check")
     assert worker in build_graph().nodes, f"{worker} has no graph node"
-    assert worker in AGENT_LLM_MAP, f"{worker} has no entry in AGENT_LLM_MAP"
+    assert worker in AGENT_MODEL_SETTINGS, f"{worker} has no entry in AGENT_MODEL_SETTINGS"
 
 
 def test_graph_exposes_exactly_the_expected_nodes():

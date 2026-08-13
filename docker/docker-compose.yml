@@ -69,8 +69,8 @@ services:
     volumes:
       # Mount source for hot-reload (writable for UV virtual environment)
       - ../backend:/app
-      # Mount a CA bundle so Python's httpx/requests can validate TLS to
-      # Portkey through an intercepting proxy. Read-only at a stable path;
+      # Mount a CA bundle so Python's httpx/requests can validate TLS to the
+      # LLM gateway through an intercepting proxy. Read-only at a stable path;
       # SSL_CERT_PATH below points into it.
       - ../.certs:/certs:ro
     env_file:
@@ -81,14 +81,31 @@ services:
       - LOG_LEVEL=debug
       - SANDBOX_URL=${SANDBOX_URL:-http://sandbox:8080}
       - R_SANDBOX_URL=${R_SANDBOX_URL:-http://r-sandbox:8081}
-      # Portkey Configuration
-      - PORTKEY_BASE_URL=${PORTKEY_BASE_URL}
-      - PORTKEY_API_KEY=${PORTKEY_API_KEY}
-      - PORTKEY_AZURE_API_KEY=${PORTKEY_AZURE_API_KEY}
-      - PORTKEY_AZURE_SLUG=${PORTKEY_AZURE_SLUG}
-      # Portkey Bedrock — used by the agents and the memory pipeline
-      - PORTKEY_BEDROCK_API_KEY=${PORTKEY_BEDROCK_API_KEY}
-      - PORTKEY_BEDROCK_SLUG=${PORTKEY_BEDROCK_SLUG:-bedrock}
+      # OpenAI-compatible endpoint, used by the agents and the memory pipeline.
+      # Any compatible endpoint works — these two are the only required vars.
+      # The backend also still accepts the older OPENAI_BEDROCK_* / PORTKEY_*
+      # spellings of them.
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # The optional endpoint-capability vars are deliberately NOT listed here.
+      # Two are JSON, so an inline ${VAR:-...} default would have to nest
+      # braces; and listing any of them bare would set it to an empty string
+      # whenever the host doesn't — which both overrides the env_file and, for
+      # OPENAI_API_KEY_HEADER specifically, counts as "explicitly configured"
+      # and so permanently disables the legacy-gateway fallback in settings.py.
+      # Put them in backend/.env instead (already loaded via env_file):
+      #   OPENAI_API_KEY_HEADER=x-portkey-api-key   # '' = standard bearer
+      #   OPENAI_EXTRA_HEADERS={"x-portkey-slug":"bedrock"}
+      #   OPENAI_MODEL_PRICES={"my-model":[0.5,1.5]}
+      #   OPENAI_STRUCTURED_OUTPUT_METHOD=function_calling|json_schema|json_mode
+      #   OPENAI_NO_TEMPERATURE_MODELS=some-reasoning-model
+      # Per-agent models — defaults live in src/config/settings.py
+      - OPENAI_MODEL_COORDINATOR=${OPENAI_MODEL_COORDINATOR:-us.anthropic.claude-sonnet-4-6}
+      - OPENAI_MODEL_ORCHESTRATOR=${OPENAI_MODEL_ORCHESTRATOR:-us.anthropic.claude-opus-5}
+      - OPENAI_MODEL_CODER=${OPENAI_MODEL_CODER:-us.anthropic.claude-sonnet-5}
+      - OPENAI_MODEL_SQL_AGENT=${OPENAI_MODEL_SQL_AGENT:-us.anthropic.claude-sonnet-5}
+      - OPENAI_MODEL_RESEARCHER=${OPENAI_MODEL_RESEARCHER:-us.anthropic.claude-sonnet-5}
+      - OPENAI_MODEL_SUMMARIZER=${OPENAI_MODEL_SUMMARIZER:-us.anthropic.claude-sonnet-4-6}
       # CA bundle for Python httpx/requests, inside the /certs volume above.
       - SSL_CERT_PATH=${SSL_CERT_PATH_CONTAINER:-/certs/ca-bundle.crt}
       # MongoDB Configuration

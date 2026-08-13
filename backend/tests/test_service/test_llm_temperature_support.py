@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.config.agents import AGENT_LLM_MAP
+from src.config.agents import AGENT_MODEL_SETTINGS, resolve_agent_model
 from src.service.llm import LLMService
 
 NO_TEMPERATURE = [
@@ -45,35 +45,18 @@ def test_temperature_is_sent(model):
 
 def test_every_configured_agent_model_is_classified_deliberately():
     """Every model actually wired up must resolve without raising."""
-    for agent, (_provider, model) in AGENT_LLM_MAP.items():
+    for agent in AGENT_MODEL_SETTINGS:
+        model = resolve_agent_model(agent)
         assert isinstance(LLMService._supports_temperature(model), bool), agent
 
 
-class TestStructuredOutputMethod:
-    """Anthropic models must use schema-enforced structured output.
+def test_structured_output_defaults_away_from_json_mode():
+    """The models we serve today must use schema-enforced structured output.
 
     ``json_mode`` only asks for JSON in the prompt and parses whatever returns,
-    so a model that opens with a sentence of prose raises
-    OutputParserException instead of routing. Observed intermittently on
-    Claude 5. Tool calling is enforced provider-side, so this is pinned.
+    so a model that opens with a sentence of prose raises OutputParserException
+    instead of routing. Observed intermittently on Claude 5. Tool calling is
+    enforced provider-side. The method is configurable per endpoint now — this
+    pins the default, so pointing somewhere else is a deliberate act.
     """
-
-    def test_anthropic_providers_use_function_calling(self):
-        from src.config.llm import ProviderType
-
-        for provider in (ProviderType.PORTKEY_BEDROCK, ProviderType.ANTHROPIC):
-            assert LLMService.get_structured_output_method(provider) == "function_calling"
-
-    def test_openai_style_providers_use_json_schema(self):
-        from src.config.llm import ProviderType
-
-        for provider in (
-            ProviderType.PORTKEY_AZURE,
-            ProviderType.PORTKEY_GCP,
-            ProviderType.OPENAI,
-        ):
-            assert LLMService.get_structured_output_method(provider) == "json_schema"
-
-    def test_no_agent_resolves_to_json_mode(self):
-        for agent in AGENT_LLM_MAP:
-            assert LLMService.get_structured_output_method_for_agent(agent) != "json_mode"
+    assert LLMService.structured_output_method() == "function_calling"

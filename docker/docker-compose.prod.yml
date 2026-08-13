@@ -53,7 +53,7 @@ services:
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=info
-      # PORTKEY_* and the rest of the runtime config come from .env.prod via
+      # OPENAI_* and the rest of the runtime config come from .env.prod via
       # env_file — no override here so prod secrets never leak into repo config.
     # Use gunicorn with multiple workers in production
     command: gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --access-logfile - --error-logfile -

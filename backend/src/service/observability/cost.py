@@ -15,11 +15,13 @@ logger = logging.getLogger(__name__)
 
 # Canonical model → (input $/1M, output $/1M)
 _PRICE_TABLE_USD_PER_MTOK: dict[str, tuple[float, float]] = {
-    # Anthropic Claude (list prices via Bedrock; Portkey passes through)
+    # Anthropic Claude (list prices via Bedrock; the gateway passes through)
     "claude-haiku-4-5": (1.00, 5.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-opus-4-6": (15.00, 75.00),
-    # OpenAI via Azure (approximate; negotiated enterprise rates may differ)
+    # OpenAI models (approximate; negotiated enterprise rates may differ). Not
+    # currently reachable — every agent runs on the Bedrock route — but kept so
+    # a gpt-* rollout doesn't silently report zero cost.
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-5-mini": (0.25, 2.00),
 }
@@ -54,14 +56,32 @@ def _canonicalize(model: str) -> str:
     return model
 
 
+def _lookup_price(model: str, canonical: str) -> tuple[float, float] | None:
+    """Resolve a price, letting configuration override the built-in table.
+
+    `OPENAI_MODEL_PRICES` is read here rather than merged at import so it stays
+    overridable at runtime and in tests. It is matched against the raw model id
+    first: an operator configuring prices for their own endpoint writes the ids
+    that endpoint actually reports, not our canonical names.
+    """
+    from src.config.settings import settings
+
+    overrides = settings.openai_model_prices
+    return (
+        overrides.get(model) or overrides.get(canonical) or _PRICE_TABLE_USD_PER_MTOK.get(canonical)
+    )
+
+
 def compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Return USD cost for a single LLM call.
 
     Returns 0.0 if the model is unknown so unknown-model calls don't crash the
     observability path; the caller can detect zero + unknown-model via the logs.
+    Point the deployment at a different endpoint and every model it serves is
+    unknown until `OPENAI_MODEL_PRICES` names it.
     """
     canonical = _canonicalize(model)
-    price = _PRICE_TABLE_USD_PER_MTOK.get(canonical)
+    price = _lookup_price(model, canonical)
     if price is None:
         logger.debug("cost: unknown model '%s' (canonical '%s') -> 0.0 USD", model, canonical)
         return 0.0

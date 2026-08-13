@@ -368,9 +368,8 @@ class ConversationService:
         try:
             # Use lightweight model for fast title generation (Haiku 4.5)
             logger.debug("Initializing LLM for title generation...")
-            llm = LLMService.get_llm_by_provider(
-                provider="portkey_bedrock",
-                model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            llm = LLMService.create_llm(
+                model=settings.openai_model_title,
                 temperature=0.7,
                 streaming=False,
             )
