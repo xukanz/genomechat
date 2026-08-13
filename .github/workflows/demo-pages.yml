@@ -1,0 +1,68 @@
+name: Deploy demo to GitHub Pages
+
+# Publishes the frontend demo walkthrough (landing → login → chat, backed by a
+# mocked API) to GitHub Pages. The real app is not deployed here — it needs a
+# backend, MongoDB and LLM credentials.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/demo-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it mid-publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Build demo
+        env:
+          BUILD_TARGET: demo
+          # Pages serves the site at /<repo>/, so assets need that prefix.
+          PUBLIC_BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - name: Serve the demo as the site root
+        run: |
+          mv dist/demo.html dist/index.html
+          touch dist/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

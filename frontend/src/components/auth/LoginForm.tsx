@@ -6,12 +6,19 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2 } from 'lucide-react'
 
-export function LoginForm() {
+interface LoginFormProps {
+  /** Seeds the email field. Used by the demo build to pre-fill credentials. */
+  defaultEmail?: string
+  /** Seeds the password field. Used by the demo build to pre-fill credentials. */
+  defaultPassword?: string
+}
+
+export function LoginForm({ defaultEmail = '', defaultPassword = '' }: LoginFormProps = {}) {
   const navigate = useNavigate()
   const { login, isLoading, error, clearError } = useAuthStore()
-  
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+
+  const [email, setEmail] = useState(defaultEmail)
+  const [password, setPassword] = useState(defaultPassword)
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
