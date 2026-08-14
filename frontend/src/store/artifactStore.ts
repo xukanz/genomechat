@@ -16,7 +16,7 @@ export interface Artifact {
   s3_key: string
   content_type: string
   size_bytes: number
-  metadata: Record<string, any>
+  metadata: Record<string, unknown>
   created_at: string
 }
 

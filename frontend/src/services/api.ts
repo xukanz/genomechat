@@ -82,7 +82,7 @@ async function handleResponse<T>(response: Response, retryRequest?: () => Promis
           // Retry original request with new token
           const retryResponse = await retryRequest()
           return handleResponse<T>(retryResponse) // Recursive call without retry to prevent infinite loop
-        } catch (error) {
+        } catch {
           // Refresh failed - logout and redirect
           useAuthStore.getState().logout()
           window.location.href = '/login'
@@ -211,6 +211,7 @@ export async function sendMessage(request: ChatRequest): Promise<ChatResponse> {
  */
 export async function createChatStreamWithFetch(
   request: ChatRequest,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SSE payload is a discriminated union decoded at runtime
   onEvent: (event: any) => void,
   onError: (error: Error) => void,
   onEnd: () => void,
@@ -309,7 +310,7 @@ export interface ArtifactListResponse {
     s3_key: string
     content_type: string
     size_bytes: number
-    metadata: Record<string, any>
+    metadata: Record<string, unknown>
     created_at: string
   }>
   count: number

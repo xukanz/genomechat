@@ -1,5 +1,6 @@
 import { motion } from "framer-motion"
 import { Code2, Database, Brain, Workflow, CheckCircle2, Loader2 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { cn } from "../../lib/utils"
 import type { AgentActivity } from "../../types/conversation"
 
@@ -7,7 +8,7 @@ interface AgentActivityPanelProps {
   activities: AgentActivity[]
 }
 
-const agentIcons: Record<string, any> = {
+const agentIcons: Record<string, LucideIcon> = {
   Coordinator: Brain,
   Orchestrator: Workflow,
   Coder: Code2,

@@ -128,6 +128,7 @@ const extractContent = (content: unknown): string => {
   return ''
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw LangGraph checkpoint message; shape varies by node
 const getAgentNameFromMessage = (msg: any): string | undefined => {
   return (
     normalizeAgentName(msg?.metadata?.agent_name) ||
@@ -286,6 +287,7 @@ export function useChat() {
 
         let conversationSummary: string | null = null
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw LangGraph checkpoint message; shape varies by node
         history.messages.forEach((msg: any, idx: number) => {
           const content = extractContent(msg.content)
           const timestamp = new Date()

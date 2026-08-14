@@ -1,4 +1,5 @@
 import { CheckCircle2, Circle, Loader2, XCircle, ArrowRight, Zap, Code2, Database, Brain, Workflow } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "../../lib/utils"
 
@@ -12,7 +13,7 @@ const formatAgentName = (agentName?: string) => {
   return formatted.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
-const agentIcons: Record<string, any> = {
+const agentIcons: Record<string, LucideIcon> = {
   coordinator: Brain,
   orchestrator: Workflow,
   coder: Code2,

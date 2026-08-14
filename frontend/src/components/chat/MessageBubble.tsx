@@ -14,6 +14,9 @@ import type { Message } from "../../hooks/useChat"
 import type { FeedbackType } from "../../types/feedback"
 
 const markdownComponents = {
+    // react-markdown does not export the per-tag component prop types, and its
+    // `inline` flag is absent from the generic Components signature.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     code: ({ inline, children, ...props }: any) => {
         if (inline) {
             return (
@@ -50,6 +53,7 @@ function MarkdownContent({ content }: { content?: string }) {
         <div className="prose prose-slate max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:p-0">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 components={markdownComponents as any}
                 urlTransform={markdownUrlTransform}
             >

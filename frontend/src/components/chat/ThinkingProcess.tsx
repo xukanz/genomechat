@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, Brain, Loader2, Code2, Database, Workflow } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { cn } from "../../lib/utils"
 
 interface ThinkingProcessProps {
@@ -8,7 +9,7 @@ interface ThinkingProcessProps {
   isStreaming?: boolean
 }
 
-const agentIcons: Record<string, any> = {
+const agentIcons: Record<string, LucideIcon> = {
   Coordinator: Brain,
   Orchestrator: Workflow,
   Coder: Code2,
@@ -22,7 +23,7 @@ const agentColors: Record<string, string> = {
   "SQL Agent": "text-yellow-500",
 }
 
-function parseThinkingLine(line: string): { agent?: string; text: string; icon?: any; color?: string } {
+function parseThinkingLine(line: string): { agent?: string; text: string; icon?: LucideIcon; color?: string } {
   // Check if line starts with "AgentName: "
   const match = line.match(/^([^:]+):\s*(.+)$/)
   if (match) {

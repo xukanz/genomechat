@@ -13,7 +13,7 @@ const passwordRules = [
   { label: 'One uppercase letter', test: (pwd: string) => /[A-Z]/.test(pwd) },
   { label: 'One lowercase letter', test: (pwd: string) => /[a-z]/.test(pwd) },
   { label: 'One number', test: (pwd: string) => /\d/.test(pwd) },
-  { label: 'One special character', test: (pwd: string) => /[!@#$%^&*()_+\-=\[\]{}';:"\\|,.<>\/?]/.test(pwd) },
+  { label: 'One special character', test: (pwd: string) => /[!@#$%^&*()_+\-=[\]{}';:"\\|,.<>/?]/.test(pwd) },
 ]
 
 export function RegisterForm() {

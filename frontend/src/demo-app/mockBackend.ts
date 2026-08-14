@@ -217,6 +217,7 @@ function registerArtifact(threadId: string, conversationTitle: string, file: Non
   })
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- parsed request JSON, shape varies by route
 function handleChatStream(body: any, signal: AbortSignal | undefined): Response {
   const message: string = body?.message || ''
   const threadId: string = body?.thread_id || crypto.randomUUID()
@@ -338,6 +339,7 @@ async function routeRequest(
   method: string,
   pathname: string,
   search: URLSearchParams,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- parsed request JSON, shape varies by route
   body: any,
   signal: AbortSignal | undefined,
 ): Promise<Response> {
@@ -595,6 +597,7 @@ async function routeRequest(
  * Parse a request body into a plain object. `authApi.loginUser` sends
  * form-urlencoded (OAuth2 password flow); everything else sends JSON.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- returns arbitrary decoded JSON or form data
 function parseBody(init: RequestInit | undefined): any {
   if (!init?.body || typeof init.body !== 'string') return undefined
   const contentType = new Headers(init.headers).get('Content-Type') || ''

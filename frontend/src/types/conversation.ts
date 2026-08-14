@@ -15,7 +15,10 @@ export interface ConversationWithMessages extends Conversation {
   messages: Array<{
     type: string
     content: string
-    [key: string]: any // Allow additional message properties
+    // Passthrough for the rest of the LangGraph checkpoint message. `unknown`
+    // would force a narrowing cast at every read site for no safety gain.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any
   }>
   token_usage?: TokenUsage | null
 }
