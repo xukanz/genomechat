@@ -540,6 +540,14 @@ Commands: `/help` · `/clear` · `/thread` · `/sync` · `/stream` · `/mode sta
 
 ---
 
+## 📄 License
+
+Released under the [MIT License](./LICENSE).
+
+> Note: the MIT License covers the code in this repository only. The external data sources GenomeChat draws on (ClinVar, GWAS Catalog, Ensembl, Europe PMC, and others) remain subject to their own terms of use and licenses.
+
+---
+
 ## 🙏 Acknowledgments
 
 Built with [LangGraph](https://github.com/langchain-ai/langgraph), [LangChain](https://github.com/langchain-ai/langchain), FastAPI, and React.

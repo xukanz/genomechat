@@ -537,6 +537,14 @@ uv run python cli.py --research-mode deep_research
 
 ---
 
+## 📄 License
+
+本项目基于 [MIT License](./LICENSE) 开源。
+
+> 注：MIT 协议仅适用于本仓库的代码。GenomeChat 使用的外部数据源（ClinVar、GWAS Catalog、Ensembl、Europe PMC 等）各自遵循其原始的使用条款与许可，不在本协议覆盖范围内。
+
+---
+
 ## 🙏 致谢
 
 用 [LangGraph](https://github.com/langchain-ai/langgraph)、[LangChain](https://github.com/langchain-ai/langchain)、FastAPI 和 React 构建。
