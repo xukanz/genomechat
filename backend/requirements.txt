@@ -33,9 +33,7 @@ asgiref==3.12.1
 attrs==25.4.0
     # via aiohttp
 bcrypt==5.0.0
-    # via
-    #   genomechat-backend (pyproject.toml)
-    #   passlib
+    # via genomechat-backend (pyproject.toml)
 boto3==1.41.1
     # via genomechat-backend (pyproject.toml)
 botocore==1.41.1
@@ -244,8 +242,6 @@ packaging==25.0
     #   langsmith
     #   opentelemetry-instrumentation
 pandas==3.0.5
-    # via genomechat-backend (pyproject.toml)
-passlib==1.7.4
     # via genomechat-backend (pyproject.toml)
 propcache==0.4.1
     # via
