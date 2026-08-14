@@ -20,29 +20,6 @@ from src.prompts.template import get_processed_prompt_with_database_context
 from src.utils.context import thread_id_context
 
 
-def _strip_tool_messages(messages: list) -> list:
-    """Remove ToolMessages and tool call metadata for downstream LLM calls."""
-    cleaned_messages = []
-    for message in messages:
-        if getattr(message, "type", None) == "tool":
-            continue
-        if isinstance(message, AIMessage) and message.tool_calls:
-            cleaned_kwargs = dict(message.additional_kwargs)
-            cleaned_kwargs.pop("tool_calls", None)
-            cleaned_kwargs.pop("function_call", None)
-            cleaned_messages.append(
-                AIMessage(
-                    content=message.content,
-                    additional_kwargs=cleaned_kwargs,
-                    response_metadata=message.response_metadata,
-                    name=message.name,
-                )
-            )
-        else:
-            cleaned_messages.append(message)
-    return cleaned_messages
-
-
 def _prepare_worker_messages(state: AgentState) -> dict:
     """Remap message roles so worker LLMs see correct role assignments.
 

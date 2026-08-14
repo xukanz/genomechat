@@ -9,23 +9,6 @@ from src.config.code_language import CodeLanguageType
 from src.config.research_mode import ResearchModeType
 
 
-class ChatMessage(BaseModel):
-    """Single chat message.
-
-    Represents a message in the conversation with role, content, and timestamp.
-    """
-
-    role: Literal["user", "assistant", "system"] = Field(
-        ...,
-        description="Role of the message sender",
-    )
-    content: str = Field(..., description="Message content")
-    timestamp: datetime = Field(
-        default_factory=datetime.now,
-        description="Message timestamp",
-    )
-
-
 class ChatRequest(BaseModel):
     """Request to chat endpoint.
 
@@ -121,18 +104,4 @@ class StreamEvent(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.now,
         description="Event timestamp",
-    )
-
-
-class ErrorResponse(BaseModel):
-    """Error response model.
-
-    Used for structured error responses.
-    """
-
-    error: str = Field(..., description="Error message")
-    detail: str | None = Field(None, description="Detailed error information")
-    timestamp: datetime = Field(
-        default_factory=datetime.now,
-        description="Error timestamp",
     )

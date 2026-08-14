@@ -16,13 +16,6 @@ class Conversation(BaseModel):
     updated_at: datetime
 
 
-class ConversationCreate(BaseModel):
-    """Request model for creating a conversation."""
-
-    title: str
-    conversation_id: Optional[str] = None  # Optional, will be generated if not provided
-
-
 class ConversationWithMessages(Conversation):
     """Conversation model with message history."""
 

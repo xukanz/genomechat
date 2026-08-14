@@ -23,13 +23,6 @@ class UserCreate(BaseModel):
         return v
 
 
-class UserLogin(BaseModel):
-    """Request model for user login (OAuth2 uses form, but this is for docs)."""
-
-    email: EmailStr
-    password: str
-
-
 class UserUpdate(BaseModel):
     """Request model for updating user profile."""
 
@@ -50,13 +43,6 @@ class UserInDB(User):
     """User model with hashed password (for internal use only)."""
 
     hashed_password: str
-
-
-class UserResponse(BaseModel):
-    """Response model for user operations."""
-
-    user: User
-    message: str = "Success"
 
 
 class TokenResponse(BaseModel):

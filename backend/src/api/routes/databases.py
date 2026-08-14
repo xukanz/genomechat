@@ -65,12 +65,6 @@ class ActiveDatabaseResponse(BaseModel):
     domain: str
 
 
-class SetActiveDatabaseRequest(BaseModel):
-    """Request to set active database."""
-
-    database_id: str
-
-
 class ConnectDatabaseResponse(BaseModel):
     """Response after attempting database connection."""
 
