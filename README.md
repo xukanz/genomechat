@@ -184,8 +184,10 @@ cd docker && docker compose up -d
 | ⚙️ 后端 | http://localhost:8000 |
 | 🐍 Python 沙箱 | http://localhost:8080 |
 | 📊 R 沙箱 | http://localhost:8081 |
+| 🍃 MongoDB | mongodb://localhost:27017 |
 
-> MongoDB **不在** compose 文件里 —— 把 `MONGODB_CONNECTION_STRING` 指向一个可达的实例。
+> compose 自带一个 MongoDB 服务，数据存在 `mongo-data` 命名卷里。想改用外部实例（Atlas、共享开发库），在启动前于宿主机 shell 里
+> `export MONGODB_CONNECTION_STRING=...` 即可覆盖。
 
 ### 🔧 方式二：本地开发
 

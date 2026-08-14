@@ -3,6 +3,24 @@
 # Run from docker/ directory: docker-compose up -d
 
 services:
+  mongodb:
+    image: mongo:7
+    container_name: genomechat-mongo-dev
+    ports:
+      # Published so host-side tooling (mongosh, Compass, a non-Docker backend
+      # run via `uv run python main.py`) can reach the same instance.
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   sandbox:
     build:
       context: ../sandbox
@@ -108,8 +126,12 @@ services:
       - OPENAI_MODEL_SUMMARIZER=${OPENAI_MODEL_SUMMARIZER:-us.anthropic.claude-sonnet-4-6}
       # CA bundle for Python httpx/requests, inside the /certs volume above.
       - SSL_CERT_PATH=${SSL_CERT_PATH_CONTAINER:-/certs/ca-bundle.crt}
-      # MongoDB Configuration
-      - MONGODB_CONNECTION_STRING=${MONGODB_CONNECTION_STRING}
+      # MongoDB Configuration. Defaults to the `mongodb` service above; set
+      # MONGODB_CONNECTION_STRING in the host shell to point at an external
+      # instance (Atlas, a shared dev server) instead. The default is spelled
+      # out rather than left bare because a bare ${VAR} resolves to an empty
+      # string when the host doesn't set it, which would override env_file.
+      - MONGODB_CONNECTION_STRING=${MONGODB_CONNECTION_STRING:-mongodb://mongodb:27017}
       - MONGODB_DB_NAME=${MONGODB_DB_NAME:-genome_chat}
       - CHECKPOINTER_TYPE=${CHECKPOINTER_TYPE:-mongodb}
       # SSL_CERT_PATH is set above and points into the /certs volume. It is
@@ -129,6 +151,9 @@ services:
     command: uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - app-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -160,3 +185,8 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  # Named volume so accounts, conversations and checkpoints survive
+  # `docker compose down`. Remove with `docker compose down -v`.
+  mongo-data:
