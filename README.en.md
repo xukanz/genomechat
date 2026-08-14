@@ -187,8 +187,11 @@ cd docker && docker compose up -d
 | ⚙️ Backend | http://localhost:8000 |
 | 🐍 Python sandbox | http://localhost:8080 |
 | 📊 R sandbox | http://localhost:8081 |
+| 🍃 MongoDB | mongodb://localhost:27017 |
 
-> MongoDB is **not** part of the compose file — point `MONGODB_CONNECTION_STRING` at a reachable instance.
+> Compose ships a MongoDB service, with data in the `mongo-data` named volume. To use an external
+> instance (Atlas, a shared dev server) instead, `export MONGODB_CONNECTION_STRING=...` in the host
+> shell before starting.
 
 ### 🔧 Option 2: Local development
 
