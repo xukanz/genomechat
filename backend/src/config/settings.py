@@ -781,8 +781,10 @@ def _get_database_settings() -> "DatabaseSettings":
     return DatabaseSettings()
 
 
-# Import DatabaseSettings and rebuild Settings model to resolve forward reference
-from src.config.database import DatabaseSettings
+# Deliberately imported at the bottom of the module: src.config.database imports from this
+# module, so a top-level import would be circular. Settings only needs the real class to
+# resolve its "DatabaseSettings" forward reference, which happens in model_rebuild() below.
+from src.config.database import DatabaseSettings  # noqa: E402
 
 Settings.model_rebuild()
 

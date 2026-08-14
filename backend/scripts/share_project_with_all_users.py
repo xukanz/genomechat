@@ -162,7 +162,7 @@ def main():
     try:
         client = get_mongodb_client()
         db = client.genome_chat
-        print(f"✅ Connected to MongoDB")
+        print("✅ Connected to MongoDB")
     except PyMongoError as e:
         print(f"❌ Failed to connect to MongoDB: {e}")
         return 1

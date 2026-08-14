@@ -47,9 +47,7 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DB_ROOT = BACKEND_ROOT / "databases"
 RAW_DIR = DB_ROOT / "_raw"
 
-CLINVAR_URL = (
-    "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz"
-)
+CLINVAR_URL = "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz"
 GWAS_BASE = "https://ftp.ebi.ac.uk/pub/databases/gwas/releases/latest"
 GWAS_ASSOC_ZIP = "gwas-catalog-associations_ontology-annotated-full.zip"
 GWAS_STUDIES_TSV = "gwas-catalog-studies.tsv"
@@ -69,10 +67,7 @@ def _ensembl_urls(release: str) -> tuple[str, str]:
     not carry — without it, "genes per megabase" is unanswerable.
     """
     base = f"https://ftp.ensembl.org/pub/release-{release}"
-    gtf = (
-        f"{base}/gtf/homo_sapiens/"
-        f"Homo_sapiens.{ENSEMBL_ASSEMBLY}.{release}.gtf.gz"
-    )
+    gtf = f"{base}/gtf/homo_sapiens/Homo_sapiens.{ENSEMBL_ASSEMBLY}.{release}.gtf.gz"
     fai = (
         f"{base}/fasta/homo_sapiens/dna_index/"
         f"Homo_sapiens.{ENSEMBL_ASSEMBLY}.dna.toplevel.fa.gz.fai"
@@ -86,6 +81,7 @@ def _ensembl_raw_paths(release: str) -> tuple[Path, Path]:
         RAW_DIR / f"Homo_sapiens.{ENSEMBL_ASSEMBLY}.{release}.gtf.gz",
         RAW_DIR / f"Homo_sapiens.{ENSEMBL_ASSEMBLY}.{release}.dna.toplevel.fa.gz.fai",
     )
+
 
 # Columns kept from variant_summary.txt. The full file has 39; these are the
 # ones the schema description exposes and the SQL agent can reason about.
@@ -101,7 +97,7 @@ CLINVAR_COLUMNS = [
     "PhenotypeIDS",
     "PhenotypeList",
     "Origin",
-    "Assembly",   # read for filtering only; not stored
+    "Assembly",  # read for filtering only; not stored
     "Chromosome",
     "Start",
     "Stop",
@@ -293,9 +289,7 @@ def build_clinvar(full: bool = False) -> Path:
     cols_ddl = ",\n  ".join(f"{c} {t}" for _, c, t in CLINVAR_SCHEMA)
     cur.execute(f"CREATE TABLE variants (\n  {cols_ddl}\n)")
 
-    insert_sql = "INSERT INTO variants VALUES ({})".format(
-        ",".join("?" * len(CLINVAR_SCHEMA))
-    )
+    insert_sql = "INSERT INTO variants VALUES ({})".format(",".join("?" * len(CLINVAR_SCHEMA)))
 
     int_cols = {c for _, c, t in CLINVAR_SCHEMA if t == "INTEGER"}
     col_out_names = [c for _, c, _ in CLINVAR_SCHEMA]

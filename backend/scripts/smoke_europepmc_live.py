@@ -57,7 +57,10 @@ async def smoke_search() -> None:
     result = await search_literature.ainvoke({"query": "BRCA1 variant classification", "limit": 3})
     check("returns records", result.startswith("Found "), result[:60])
     check("reports the total hit count", " of " in result.split("\n")[0])
-    check("includes an abstract or states its absence", "Abstract:" in result or "[No abstract" in result)
+    check(
+        "includes an abstract or states its absence",
+        "Abstract:" in result or "[No abstract" in result,
+    )
     check("offers a pagination cursor", 'cursor="' in result)
 
     empty = await search_literature.ainvoke(
@@ -93,7 +96,9 @@ async def smoke_query_syntax() -> None:
     # SRC must be bare: SRC:"MED" returns zero hits.
     src_query = build_query("", {"sources": ["MED"]})
     check("SRC is emitted unquoted", src_query == "SRC:MED", src_query)
-    result = await search_literature.ainvoke({"query": "BRCA1", "filters": {"sources": ["MED"]}, "limit": 1})
+    result = await search_literature.ainvoke(
+        {"query": "BRCA1", "filters": {"sources": ["MED"]}, "limit": 1}
+    )
     check("SRC filter returns hits", result.startswith("Found "), result[:60])
 
     # Multi-word JOURNAL must be quoted or the tail becomes a free-text term.
@@ -108,7 +113,9 @@ async def smoke_query_syntax() -> None:
 async def smoke_pmid_bridge() -> None:
     print("\nPMID bridge (GWAS PUBMEDID -> literature)")
     result = await search_literature.ainvoke({"query": "", "filters": {"pmids": [OA_PMID]}})
-    check("a bare PMID resolves to exactly one record", result.startswith("Found 1 of 1"), result[:60])
+    check(
+        "a bare PMID resolves to exactly one record", result.startswith("Found 1 of 1"), result[:60]
+    )
     check("the resolved record is the expected paper", "heterozygosity" in result.lower())
 
     batch = await search_literature.ainvoke(

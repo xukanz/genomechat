@@ -1,7 +1,5 @@
 """Tests for password utilities."""
 
-import pytest
-
 from src.service.auth.password import (
     hash_password,
     validate_password_strength,

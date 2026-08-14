@@ -2,9 +2,10 @@ import pandas as pd
 from typing import List, Any, Tuple
 import logging
 
-logger = logging.getLogger(__name__)
 from src.config.database import DatabaseSettings
 from src.service.database.database_connection import DatabaseConnection
+
+logger = logging.getLogger(__name__)
 
 # Import pyathena with optional handling
 try:

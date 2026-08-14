@@ -110,7 +110,9 @@ class TestIdentifierFilters:
 
 class TestDateRange:
     def test_valid_range_renders_brackets(self):
-        result = build_query("", {"publication_date_range": {"start": "2022-01-01", "end": "2024-12-31"}})
+        result = build_query(
+            "", {"publication_date_range": {"start": "2022-01-01", "end": "2024-12-31"}}
+        )
         assert result == "FIRST_PDATE:[2022-01-01 TO 2024-12-31]"
 
     @pytest.mark.parametrize("bad", ["2022", "01-01-2022", "2022-13-01", "yesterday"])

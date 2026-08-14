@@ -76,9 +76,7 @@ async def _get(
         raise LiteratureAPIError(f"Europe PMC returned HTTP {status}.") from e
     except httpx.ConnectError as e:
         logger.error("Could not connect to Europe PMC at %s: %s", url, e)
-        raise LiteratureAPIError(
-            "Could not reach Europe PMC. Check network connectivity."
-        ) from e
+        raise LiteratureAPIError("Could not reach Europe PMC. Check network connectivity.") from e
     except httpx.HTTPError as e:
         logger.error("Europe PMC request failed for %s: %s", url, e, exc_info=True)
         raise LiteratureAPIError(f"Europe PMC request failed: {e}") from e

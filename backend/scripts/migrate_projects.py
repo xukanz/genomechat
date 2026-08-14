@@ -12,13 +12,11 @@ Run with: python backend/scripts/migrate_projects.py
 
 import logging
 import sys
-from datetime import datetime
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.config.settings import settings
 from src.service.database.connections.mongodb_connection import get_mongodb_database
 from src.service.storage.project_service import ProjectService
 
@@ -101,7 +99,7 @@ def migrate_conversations_to_projects(dry_run: bool = False):
                     default_project_id = existing_project["project_id"]
                     logger.info(f"  ℹ Would use existing default project: {default_project_id}")
                 else:
-                    logger.info(f"  ℹ Would create new default project")
+                    logger.info("  ℹ Would create new default project")
                     migration_results["default_projects_created"] += 1
                     # For dry run, create a placeholder ID
                     default_project_id = f"would-create-for-{user_id}"
@@ -141,9 +139,9 @@ def migrate_conversations_to_projects(dry_run: bool = False):
                 # Update project conversation count
                 if not dry_run:
                     project_service._update_conversation_count(default_project.id)
-                    logger.info(f"  ✓ Updated project conversation count")
+                    logger.info("  ✓ Updated project conversation count")
             else:
-                logger.info(f"  ℹ No orphaned conversations found")
+                logger.info("  ℹ No orphaned conversations found")
 
             migration_results["users_processed"] += 1
 

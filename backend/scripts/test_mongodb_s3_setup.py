@@ -5,7 +5,6 @@ This script tests the basic functionality without running full pytest suite.
 Run with: python scripts/test_mongodb_s3_setup.py
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -14,7 +13,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.service.database.connections.mongodb_connection import (
     MongoDBConnection,
-    get_mongodb_database,
 )
 from src.service.auth.user_service import UserService
 from src.service.storage.conversation_service import ConversationService
@@ -29,7 +27,7 @@ def test_mongodb_connection():
     print("Testing MongoDB connection...")
     try:
         conn = MongoDBConnection()
-        client = conn.connect()
+        conn.connect()
         db = conn.get_database()
         print(f"✓ Connected to MongoDB database: {db.name}")
         return True
@@ -60,7 +58,7 @@ def test_user_service():
 
         # Cleanup
         service.delete_user(user.id)
-        print(f"✓ Deleted test user")
+        print("✓ Deleted test user")
         return True
     except Exception as e:
         print(f"✗ UserService test failed: {e}")
@@ -97,7 +95,7 @@ def test_conversation_service():
 
         # Cleanup
         service.delete_conversation(conversation_id, user_id)
-        print(f"✓ Deleted test conversation")
+        print("✓ Deleted test conversation")
         return True
     except Exception as e:
         print(f"✗ ConversationService test failed: {e}")
@@ -146,11 +144,11 @@ def test_file_storage_service():
         # Retrieve
         retrieved = service.get_by_file_id(saved_result.file_id, user_id="test-user-123")
         assert retrieved is not None
-        print(f"✓ Retrieved file record from MongoDB")
+        print("✓ Retrieved file record from MongoDB")
 
         # Cleanup
         service.delete_file(saved_result.file_id, user_id="test-user-123")
-        print(f"✓ Deleted test file and S3 object")
+        print("✓ Deleted test file and S3 object")
         return True
     except Exception as e:
         print(f"✗ FileStorageService test failed: {e}")

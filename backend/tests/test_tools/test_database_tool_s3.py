@@ -33,9 +33,7 @@ def mock_file_storage_service():
     The tool imports the service lazily inside the function body, so the patch
     has to land on the defining module rather than on `src.tools.database`.
     """
-    with patch(
-        "src.service.storage.file_storage_service.FileStorageService"
-    ) as mock_service_class:
+    with patch("src.service.storage.file_storage_service.FileStorageService") as mock_service_class:
         mock_service = MagicMock()
         mock_result = MagicMock()
         mock_result.file_id = "test-file-id"

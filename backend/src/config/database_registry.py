@@ -286,10 +286,7 @@ DATABASE_PROFILES: dict[DatabaseProfile, DatabaseProfileConfig] = {
             ),
             ExampleQuestion(
                 label="Transcripts per Gene",
-                text=(
-                    "Which 20 protein-coding genes have the most annotated "
-                    "transcripts?"
-                ),
+                text=("Which 20 protein-coding genes have the most annotated transcripts?"),
                 complexity=QuestionComplexity.MEDIUM,
             ),
             ExampleQuestion(
@@ -322,6 +319,7 @@ DATABASE_PROFILES: dict[DatabaseProfile, DatabaseProfileConfig] = {
         ],
     ),
 }
+
 
 def _load_db_registry_vault_secrets() -> dict[str, Any]:
     """Load database registry secrets from Vault Secrets.

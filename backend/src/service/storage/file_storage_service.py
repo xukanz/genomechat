@@ -181,7 +181,7 @@ class FileStorageService:
         }
 
         try:
-            result = self.files_collection.insert_one(file_doc)
+            self.files_collection.insert_one(file_doc)
             logger.info(
                 f"Saved file metadata: file_id={file_id}, type={file_data.file_type.value}, "
                 f"s3_key={file_data.s3_key}"

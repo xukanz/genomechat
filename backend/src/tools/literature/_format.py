@@ -163,8 +163,7 @@ def format_citation_list(
     relation = "citing" if direction == "citations" else "referenced by"
     if not items:
         return (
-            f"No {direction} found for {source}/{paper_id}"
-            f"{f' on page {page}' if page > 1 else ''}."
+            f"No {direction} found for {source}/{paper_id}{f' on page {page}' if page > 1 else ''}."
         )
 
     parts = [

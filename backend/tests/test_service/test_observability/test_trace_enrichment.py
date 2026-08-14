@@ -442,7 +442,9 @@ def test_finalize_updates_trace_name_with_output_heading_and_turn():
         output="## Top 10 Most Frequently Reported Variants in ClinVar\n\nTRBV19*01 ...",
         turn_index=0,
     )
-    assert attrs["langfuse.trace.name"] == ("Top 10 Most Frequently Reported Variants in ClinVar · t0")
+    assert attrs["langfuse.trace.name"] == (
+        "Top 10 Most Frequently Reported Variants in ClinVar · t0"
+    )
 
 
 def test_finalize_attaches_turn_index_metadata():

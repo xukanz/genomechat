@@ -24,8 +24,7 @@ class TestStructure:
 
     def test_nested_sections_both_render(self):
         xml = _article(
-            "<sec><title>Outer</title><p>A.</p>"
-            "<sec><title>Inner</title><p>B.</p></sec></sec>"
+            "<sec><title>Outer</title><p>A.</p><sec><title>Inner</title><p>B.</p></sec></sec>"
         )
         result = jats_to_text(xml)
         assert "## Outer" in result and "## Inner" in result

@@ -1,12 +1,13 @@
 import pandas as pd
 import threading
-from queue import Queue
+from queue import Empty, Full, Queue
 from typing import List, Any, Tuple
 import logging
 
-logger = logging.getLogger(__name__)
 from src.config.database import DatabaseSettings
 from src.service.database.database_connection import DatabaseConnection
+
+logger = logging.getLogger(__name__)
 
 # Import pyodbc at the module level for easier testing
 try:
@@ -106,7 +107,7 @@ class MSSQLConnection(DatabaseConnection):
                 try:
                     self.conn = connection_pool.get_nowait()
                     logger.info("⎄ Obtained MSSQL connection from pool")
-                except:
+                except Empty:
                     # Pool is empty, create new connection
                     self.conn = self._create_connection()
             except Exception as e:
@@ -159,7 +160,7 @@ class MSSQLConnection(DatabaseConnection):
                     try:
                         connection_pool.put_nowait(self.conn)
                         logger.info("⎄ Returned MSSQL connection to pool")
-                    except:
+                    except Full:
                         # Pool is full, close the connection
                         self.conn.close()
                         logger.info("⎄ Closed MSSQL connection (pool full)")
@@ -171,7 +172,7 @@ class MSSQLConnection(DatabaseConnection):
                 # Ensure connection is closed on error
                 try:
                     self.conn.close()
-                except:
+                except Exception:
                     pass
             finally:
                 self.conn = None

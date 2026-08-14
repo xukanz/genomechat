@@ -3,9 +3,10 @@ import threading
 from typing import List, Any, Tuple
 import logging
 
-logger = logging.getLogger(__name__)
 from src.config.database import DatabaseSettings
 from src.service.database.database_connection import DatabaseConnection
+
+logger = logging.getLogger(__name__)
 
 # Import mysql.connector with optional handling
 try:

@@ -268,9 +268,7 @@ class TestGetPaperCitations:
     async def test_references_direction_hits_the_other_path(self):
         payload = {"hitCount": 2, "referenceList": {"reference": [{"id": "1", "title": "R"}]}}
         with _patched_client(_json_response(payload)) as client:
-            await get_paper_citations.ainvoke(
-                {"paper_id": "35039532", "direction": "references"}
-            )
+            await get_paper_citations.ainvoke({"paper_id": "35039532", "direction": "references"})
         assert _sent_url(client).endswith("/MED/35039532/references")
 
     @pytest.mark.asyncio

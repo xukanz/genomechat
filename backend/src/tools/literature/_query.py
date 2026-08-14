@@ -219,7 +219,5 @@ def build_query(query: str, filters: Optional[dict[str, Any]] = None) -> str:
         clauses.extend(_build_filter_clauses(filters))
 
     if not clauses:
-        raise LiteratureQueryError(
-            "A non-empty 'query' or at least one filter is required."
-        )
+        raise LiteratureQueryError("A non-empty 'query' or at least one filter is required.")
     return " AND ".join(clauses)

@@ -61,9 +61,7 @@ def _clamp(value: Any, low: int, high: int) -> int:
 def _resolve_sort(sort: str) -> Optional[str]:
     key = (sort or "relevance").strip().lower()
     if key not in _SORT_TOKENS:
-        raise LiteratureQueryError(
-            f"Invalid sort '{sort}'. Use one of: {', '.join(_SORT_TOKENS)}."
-        )
+        raise LiteratureQueryError(f"Invalid sort '{sort}'. Use one of: {', '.join(_SORT_TOKENS)}.")
     return _SORT_TOKENS[key]
 
 
@@ -344,9 +342,7 @@ async def get_literature_stats(
     try:
         probing = bool(query) or bool(filters)
         epmc_query = build_query(query or "", filters) if probing else "*"
-        data = await get_json(
-            "/search", {"query": epmc_query, "format": "json", "pageSize": 1}
-        )
+        data = await get_json("/search", {"query": epmc_query, "format": "json", "pageSize": 1})
         return format_stats(
             data.get("hitCount", 0),
             epmc_query if probing else None,

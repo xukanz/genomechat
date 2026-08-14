@@ -212,7 +212,7 @@ class TestStats:
         assert "journal" in result and "pmids" in result
 
     def test_probe_mode_reports_only_the_count(self):
-        result = format_stats(3412, 'query', ["journal"])
+        result = format_stats(3412, "query", ["journal"])
         assert "3,412 records match" in result
         assert "Coverage:" not in result
 
