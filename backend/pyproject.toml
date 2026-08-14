@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "genomechat-backend"
 version = "0.1.0"
 description = "GenomeChat platform backend service"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "aiosqlite>=0.21.0",
