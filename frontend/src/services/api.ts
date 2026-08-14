@@ -16,7 +16,6 @@ import type {
   ProjectUpdate,
   ProjectList,
   ProjectShare,
-  ProjectShareList,
   Snippet,
   SnippetCreate,
   SnippetList,
@@ -141,19 +140,6 @@ export async function fetchConversations(projectId?: string): Promise<Conversati
 }
 
 /**
- * Fetch a single conversation by ID
- */
-export async function fetchConversation(conversationId: string): Promise<Conversation> {
-  const makeRequest = () => fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
-  
-  const response = await makeRequest()
-  return handleResponse<Conversation>(response, makeRequest)
-}
-
-/**
  * Fetch conversation with full message history
  */
 export async function fetchConversationHistory(
@@ -212,27 +198,6 @@ export async function sendMessage(request: ChatRequest): Promise<ChatResponse> {
   
   const response = await makeRequest()
   return handleResponse<ChatResponse>(response, makeRequest)
-}
-
-/**
- * Create streaming connection for chat
- * Returns an EventSource for Server-Sent Events
- */
-export function createChatStream(request: ChatRequest): EventSource {
-  const params = new URLSearchParams({
-    message: request.message,
-    ...(request.thread_id && { thread_id: request.thread_id }),
-    ...(request.research_mode && { research_mode: request.research_mode }),
-  })
-
-  // EventSource doesn't support POST or custom headers
-  // Need to pass token as query param or use fetch with ReadableStream
-  // For now, using POST with fetch (see createChatStreamWithFetch below)
-  const url = `${API_BASE_URL}/chat/stream?${params.toString()}`
-
-  // Note: EventSource doesn't support Authorization headers
-  // You may need to use a different approach for authenticated streaming
-  return new EventSource(url)
 }
 
 /**
@@ -468,19 +433,6 @@ export async function createProject(data: ProjectCreate): Promise<Project> {
 }
 
 /**
- * Get a specific project by ID
- */
-export async function getProject(projectId: string): Promise<Project> {
-  const makeRequest = () => fetch(`${API_BASE_URL}/projects/${projectId}`, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
-  
-  const response = await makeRequest()
-  return handleResponse<Project>(response, makeRequest)
-}
-
-/**
  * Update project metadata
  */
 export async function updateProject(
@@ -564,19 +516,6 @@ export async function searchUsers(
 
   const response = await makeRequest()
   return handleResponse<UserSearchResult>(response, makeRequest)
-}
-
-/**
- * List all shares for a project (owner only)
- */
-export async function listProjectShares(projectId: string): Promise<ProjectShareList> {
-  const makeRequest = () => fetch(`${API_BASE_URL}/projects/${projectId}/shares`, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
-
-  const response = await makeRequest()
-  return handleResponse<ProjectShareList>(response, makeRequest)
 }
 
 /**
@@ -729,19 +668,6 @@ export async function fetchReports(projectId?: string): Promise<ReportList> {
 }
 
 /**
- * Get a specific report by ID
- */
-export async function getReport(reportId: string): Promise<Report> {
-  const makeRequest = () => fetch(`${API_BASE_URL}/reports/${reportId}`, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
-
-  const response = await makeRequest()
-  return handleResponse<Report>(response, makeRequest)
-}
-
-/**
  * Create a new report from a bookmarked AI response
  */
 export async function createReport(data: ReportCreate): Promise<Report> {
@@ -788,34 +714,6 @@ export async function deleteReport(reportId: string): Promise<void> {
   }
 
   return handleResponse<void>(response, makeRequest)
-}
-
-/**
- * Check if a report exists for a specific message
- */
-export interface ReportCheckResponse {
-  exists: boolean
-  report_id: string | null
-}
-
-export async function checkReportExists(
-  conversationId: string,
-  messageIndex: number
-): Promise<ReportCheckResponse> {
-  const params = new URLSearchParams({
-    conversation_id: conversationId,
-    message_index: messageIndex.toString(),
-  })
-
-  const url = `${API_BASE_URL}/reports/check?${params.toString()}`
-
-  const makeRequest = () => fetch(url, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
-
-  const response = await makeRequest()
-  return handleResponse<ReportCheckResponse>(response, makeRequest)
 }
 
 /**
@@ -882,47 +780,6 @@ export async function fetchConversationFeedback(
 }
 
 /**
- * Get feedback for a specific message
- */
-export async function getMessageFeedback(
-  conversationId: string,
-  messageIndex: number
-): Promise<MessageFeedback | null> {
-  const params = new URLSearchParams({
-    conversation_id: conversationId,
-    message_index: messageIndex.toString(),
-  })
-
-  const url = `${API_BASE_URL}/feedback/message?${params.toString()}`
-
-  const makeRequest = () => fetch(url, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
-
-  const response = await makeRequest()
-  return handleResponse<MessageFeedback | null>(response, makeRequest)
-}
-
-/**
- * Delete feedback by ID
- */
-export async function deleteFeedback(feedbackId: string): Promise<void> {
-  const makeRequest = () => fetch(`${API_BASE_URL}/feedback/${feedbackId}`, {
-    method: 'DELETE',
-    headers: getHeaders(),
-  })
-
-  const response = await makeRequest()
-
-  if (response.status === 204) {
-    return
-  }
-
-  return handleResponse<void>(response, makeRequest)
-}
-
-/**
  * Delete feedback for a specific message
  */
 export async function deleteFeedbackByMessage(
@@ -951,9 +808,7 @@ export async function deleteFeedbackByMessage(
 // ============================================================================
 
 import type {
-  DatabaseInfo,
   DatabaseListResponse,
-  ActiveDatabaseResponse,
   ConnectDatabaseResponse,
 } from '../types/database'
 
@@ -968,32 +823,6 @@ export async function fetchDatabases(): Promise<DatabaseListResponse> {
 
   const response = await makeRequest()
   return handleResponse<DatabaseListResponse>(response, makeRequest)
-}
-
-/**
- * Fetch the currently active database
- */
-export async function fetchActiveDatabase(): Promise<ActiveDatabaseResponse> {
-  const makeRequest = () => fetch(`${API_BASE_URL}/databases/active`, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
-
-  const response = await makeRequest()
-  return handleResponse<ActiveDatabaseResponse>(response, makeRequest)
-}
-
-/**
- * Fetch information about a specific database
- */
-export async function fetchDatabase(databaseId: string): Promise<DatabaseInfo> {
-  const makeRequest = () => fetch(`${API_BASE_URL}/databases/${encodeURIComponent(databaseId)}`, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
-
-  const response = await makeRequest()
-  return handleResponse<DatabaseInfo>(response, makeRequest)
 }
 
 /**

@@ -29,12 +29,6 @@ export interface UpdateTitleRequest {
   title: string
 }
 
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  timestamp?: string
-}
-
 export interface ChatRequest {
   message: string
   thread_id?: string | null

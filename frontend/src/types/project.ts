@@ -10,15 +10,6 @@ export interface ProjectShare {
   shared_at: string
 }
 
-export interface ProjectShareCreate {
-  user_id: string
-}
-
-export interface ProjectShareList {
-  shares: ProjectShare[]
-  count: number
-}
-
 export interface Project {
   id: string
   user_id: string

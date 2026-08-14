@@ -632,10 +632,3 @@ export function installDemoBackend() {
     return routeRequest(method, parsed.pathname, parsed.searchParams, body, init?.signal ?? undefined)
   }
 }
-
-export function uninstallDemoBackend() {
-  if (originalFetch) {
-    window.fetch = originalFetch
-    originalFetch = null
-  }
-}

@@ -23,9 +23,6 @@ export const ENSEMBL_GENE_ROWS = 78_941
 export const ENSEMBL_TRANSCRIPT_ROWS = 646_577
 export const ENSEMBL_EXON_ROWS = 5_087_789
 
-/** Variant and association records only — the subset the CTA speaks to. */
-export const VARIANT_AND_ASSOCIATION_ROWS = CLINVAR_ROWS + GWAS_ASSOCIATION_ROWS
-
 /** Graph nodes: coordinator, orchestrator, coder, SQL agent, researcher. */
 export const AGENT_COUNT = 5
 
@@ -38,9 +35,6 @@ export const AGENT_TOOL_COUNT = 16
 
 /** Public genomics resources shipped as profiles: ClinVar, GWAS Catalog, Ensembl. */
 export const DATA_SOURCE_COUNT = 3
-
-/** Ensembl release the annotation profile is pinned to. */
-export const ENSEMBL_RELEASE = 116
 
 /**
  * Per-table breakdown driving the data-scale chart.
