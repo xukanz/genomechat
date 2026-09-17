@@ -12,9 +12,8 @@ interface LocaleState {
 
 /**
  * Resolve the initial locale: an explicit past choice wins, otherwise fall
- * back to the browser's preference. Chinese is the default because the
- * product's primary audience reads it — matching the README, which ships
- * Chinese as the default and English as the alternate.
+ * back to the browser's preference. English is the default; a browser that
+ * asks for Chinese still gets it.
  */
 function initialLocale(): Locale {
   try {
@@ -24,7 +23,7 @@ function initialLocale(): Locale {
     // Private browsing or a blocked storage partition — fall through to the
     // navigator hint rather than failing to render.
   }
-  return navigator.language?.toLowerCase().startsWith('en') ? 'en' : 'zh'
+  return navigator.language?.toLowerCase().startsWith('zh') ? 'zh' : 'en'
 }
 
 function persist(locale: Locale) {
